@@ -1,0 +1,539 @@
+{
+  "TrainingRounds": 1901,
+  "TestRounds": 100,
+  "TotalPredictions": 2000,
+  "ViableRecommendations": 234,
+  "TopCombinations": [
+    {
+      "Picks": [
+        {
+          "RoundId": 9601,
+          "Arena": 2,
+          "PirateId": 3,
+          "WinProbability": 0.99994236,
+          "CurrentOdds": 13,
+          "ExpectedValue": 11.99925,
+          "KellyFraction": 0.9999376,
+          "ShouldBet": true,
+          "Confidence": "High"
+        },
+        {
+          "RoundId": 9601,
+          "Arena": 0,
+          "PirateId": 1,
+          "WinProbability": 0.9852198,
+          "CurrentOdds": 13,
+          "ExpectedValue": 11.8078575,
+          "KellyFraction": 0.9839881,
+          "ShouldBet": true,
+          "Confidence": "High"
+        },
+        {
+          "RoundId": 9601,
+          "Arena": 4,
+          "PirateId": 2,
+          "WinProbability": 0.9674141,
+          "CurrentOdds": 9,
+          "ExpectedValue": 7.706727,
+          "KellyFraction": 0.9633408,
+          "ShouldBet": true,
+          "Confidence": "High"
+        },
+        {
+          "RoundId": 9601,
+          "Arena": 3,
+          "PirateId": 4,
+          "WinProbability": 0.8471155,
+          "CurrentOdds": 4,
+          "ExpectedValue": 2.388462,
+          "KellyFraction": 0.796154,
+          "ShouldBet": true,
+          "Confidence": "High"
+        }
+      ],
+      "TotalOdds": 6084,
+      "CombinedProbability": 0.80735236,
+      "ExpectedValue": 4910.9316,
+      "Strategy": "Balanced",
+      "RiskLevel": "High"
+    },
+    {
+      "Picks": [
+        {
+          "RoundId": 9601,
+          "Arena": 2,
+          "PirateId": 3,
+          "WinProbability": 0.99994236,
+          "CurrentOdds": 13,
+          "ExpectedValue": 11.99925,
+          "KellyFraction": 0.9999376,
+          "ShouldBet": true,
+          "Confidence": "High"
+        },
+        {
+          "RoundId": 9601,
+          "Arena": 0,
+          "PirateId": 1,
+          "WinProbability": 0.9852198,
+          "CurrentOdds": 13,
+          "ExpectedValue": 11.8078575,
+          "KellyFraction": 0.9839881,
+          "ShouldBet": true,
+          "Confidence": "High"
+        },
+        {
+          "RoundId": 9601,
+          "Arena": 4,
+          "PirateId": 2,
+          "WinProbability": 0.9674141,
+          "CurrentOdds": 9,
+          "ExpectedValue": 7.706727,
+          "KellyFraction": 0.9633408,
+          "ShouldBet": true,
+          "Confidence": "High"
+        },
+        {
+          "RoundId": 9601,
+          "Arena": 3,
+          "PirateId": 4,
+          "WinProbability": 0.8471155,
+          "CurrentOdds": 4,
+          "ExpectedValue": 2.388462,
+          "KellyFraction": 0.796154,
+          "ShouldBet": true,
+          "Confidence": "High"
+        }
+      ],
+      "TotalOdds": 6084,
+      "CombinedProbability": 0.80735236,
+      "ExpectedValue": 4910.9316,
+      "Strategy": "Aggressive",
+      "RiskLevel": "High"
+    },
+    {
+      "Picks": [
+        {
+          "RoundId": 9617,
+          "Arena": 4,
+          "PirateId": 1,
+          "WinProbability": 0.9999737,
+          "CurrentOdds": 13,
+          "ExpectedValue": 11.999659,
+          "KellyFraction": 0.99997145,
+          "ShouldBet": true,
+          "Confidence": "High"
+        },
+        {
+          "RoundId": 9617,
+          "Arena": 3,
+          "PirateId": 3,
+          "WinProbability": 0.850626,
+          "CurrentOdds": 13,
+          "ExpectedValue": 10.058138,
+          "KellyFraction": 0.83817816,
+          "ShouldBet": true,
+          "Confidence": "High"
+        },
+        {
+          "RoundId": 9617,
+          "Arena": 0,
+          "PirateId": 4,
+          "WinProbability": 0.9989653,
+          "CurrentOdds": 6,
+          "ExpectedValue": 4.993792,
+          "KellyFraction": 0.99875844,
+          "ShouldBet": true,
+          "Confidence": "High"
+        },
+        {
+          "RoundId": 9617,
+          "Arena": 1,
+          "PirateId": 2,
+          "WinProbability": 0.8797712,
+          "CurrentOdds": 2,
+          "ExpectedValue": 0.75954235,
+          "KellyFraction": 0.75954235,
+          "ShouldBet": true,
+          "Confidence": "High"
+        }
+      ],
+      "TotalOdds": 2028,
+      "CombinedProbability": 0.7475622,
+      "ExpectedValue": 1515.0562,
+      "Strategy": "Balanced",
+      "RiskLevel": "High"
+    },
+    {
+      "Picks": [
+        {
+          "RoundId": 9617,
+          "Arena": 4,
+          "PirateId": 1,
+          "WinProbability": 0.9999737,
+          "CurrentOdds": 13,
+          "ExpectedValue": 11.999659,
+          "KellyFraction": 0.99997145,
+          "ShouldBet": true,
+          "Confidence": "High"
+        },
+        {
+          "RoundId": 9617,
+          "Arena": 3,
+          "PirateId": 3,
+          "WinProbability": 0.850626,
+          "CurrentOdds": 13,
+          "ExpectedValue": 10.058138,
+          "KellyFraction": 0.83817816,
+          "ShouldBet": true,
+          "Confidence": "High"
+        },
+        {
+          "RoundId": 9617,
+          "Arena": 0,
+          "PirateId": 4,
+          "WinProbability": 0.9989653,
+          "CurrentOdds": 6,
+          "ExpectedValue": 4.993792,
+          "KellyFraction": 0.99875844,
+          "ShouldBet": true,
+          "Confidence": "High"
+        },
+        {
+          "RoundId": 9617,
+          "Arena": 1,
+          "PirateId": 2,
+          "WinProbability": 0.8797712,
+          "CurrentOdds": 2,
+          "ExpectedValue": 0.75954235,
+          "KellyFraction": 0.75954235,
+          "ShouldBet": true,
+          "Confidence": "High"
+        }
+      ],
+      "TotalOdds": 2028,
+      "CombinedProbability": 0.7475622,
+      "ExpectedValue": 1515.0562,
+      "Strategy": "Aggressive",
+      "RiskLevel": "High"
+    },
+    {
+      "Picks": [
+        {
+          "RoundId": 9640,
+          "Arena": 0,
+          "PirateId": 1,
+          "WinProbability": 0.90591913,
+          "CurrentOdds": 13,
+          "ExpectedValue": 10.776949,
+          "KellyFraction": 0.8980791,
+          "ShouldBet": true,
+          "Confidence": "High"
+        },
+        {
+          "RoundId": 9640,
+          "Arena": 3,
+          "PirateId": 4,
+          "WinProbability": 0.72431517,
+          "CurrentOdds": 13,
+          "ExpectedValue": 8.416098,
+          "KellyFraction": 0.70134145,
+          "ShouldBet": true,
+          "Confidence": "High"
+        },
+        {
+          "RoundId": 9640,
+          "Arena": 2,
+          "PirateId": 3,
+          "WinProbability": 0.24018122,
+          "CurrentOdds": 13,
+          "ExpectedValue": 2.122356,
+          "KellyFraction": 0.176863,
+          "ShouldBet": true,
+          "Confidence": "Medium"
+        },
+        {
+          "RoundId": 9640,
+          "Arena": 1,
+          "PirateId": 2,
+          "WinProbability": 0.6823952,
+          "CurrentOdds": 2,
+          "ExpectedValue": 0.36479044,
+          "KellyFraction": 0.36479044,
+          "ShouldBet": true,
+          "Confidence": "High"
+        }
+      ],
+      "TotalOdds": 4394,
+      "CombinedProbability": 0.10754544,
+      "ExpectedValue": 471.5547,
+      "Strategy": "Balanced",
+      "RiskLevel": "High"
+    },
+    {
+      "Picks": [
+        {
+          "RoundId": 9640,
+          "Arena": 0,
+          "PirateId": 1,
+          "WinProbability": 0.90591913,
+          "CurrentOdds": 13,
+          "ExpectedValue": 10.776949,
+          "KellyFraction": 0.8980791,
+          "ShouldBet": true,
+          "Confidence": "High"
+        },
+        {
+          "RoundId": 9640,
+          "Arena": 3,
+          "PirateId": 4,
+          "WinProbability": 0.72431517,
+          "CurrentOdds": 13,
+          "ExpectedValue": 8.416098,
+          "KellyFraction": 0.70134145,
+          "ShouldBet": true,
+          "Confidence": "High"
+        },
+        {
+          "RoundId": 9640,
+          "Arena": 2,
+          "PirateId": 3,
+          "WinProbability": 0.24018122,
+          "CurrentOdds": 13,
+          "ExpectedValue": 2.122356,
+          "KellyFraction": 0.176863,
+          "ShouldBet": true,
+          "Confidence": "Medium"
+        },
+        {
+          "RoundId": 9640,
+          "Arena": 1,
+          "PirateId": 2,
+          "WinProbability": 0.6823952,
+          "CurrentOdds": 2,
+          "ExpectedValue": 0.36479044,
+          "KellyFraction": 0.36479044,
+          "ShouldBet": true,
+          "Confidence": "High"
+        }
+      ],
+      "TotalOdds": 4394,
+      "CombinedProbability": 0.10754544,
+      "ExpectedValue": 471.5547,
+      "Strategy": "Aggressive",
+      "RiskLevel": "High"
+    },
+    {
+      "Picks": [
+        {
+          "RoundId": 9596,
+          "Arena": 4,
+          "PirateId": 2,
+          "WinProbability": 0.9994248,
+          "CurrentOdds": 13,
+          "ExpectedValue": 11.992522,
+          "KellyFraction": 0.99937683,
+          "ShouldBet": true,
+          "Confidence": "High"
+        },
+        {
+          "RoundId": 9596,
+          "Arena": 3,
+          "PirateId": 1,
+          "WinProbability": 0.43591785,
+          "CurrentOdds": 13,
+          "ExpectedValue": 4.666932,
+          "KellyFraction": 0.388911,
+          "ShouldBet": true,
+          "Confidence": "High"
+        },
+        {
+          "RoundId": 9596,
+          "Arena": 0,
+          "PirateId": 4,
+          "WinProbability": 0.9999988,
+          "CurrentOdds": 3,
+          "ExpectedValue": 1.9999964,
+          "KellyFraction": 0.9999982,
+          "ShouldBet": true,
+          "Confidence": "High"
+        },
+        {
+          "RoundId": 9596,
+          "Arena": 1,
+          "PirateId": 3,
+          "WinProbability": 0.99999946,
+          "CurrentOdds": 2,
+          "ExpectedValue": 0.9999989,
+          "KellyFraction": 0.9999989,
+          "ShouldBet": true,
+          "Confidence": "High"
+        }
+      ],
+      "TotalOdds": 1014,
+      "CombinedProbability": 0.43566638,
+      "ExpectedValue": 440.76572,
+      "Strategy": "Balanced",
+      "RiskLevel": "High"
+    },
+    {
+      "Picks": [
+        {
+          "RoundId": 9596,
+          "Arena": 4,
+          "PirateId": 2,
+          "WinProbability": 0.9994248,
+          "CurrentOdds": 13,
+          "ExpectedValue": 11.992522,
+          "KellyFraction": 0.99937683,
+          "ShouldBet": true,
+          "Confidence": "High"
+        },
+        {
+          "RoundId": 9596,
+          "Arena": 3,
+          "PirateId": 1,
+          "WinProbability": 0.43591785,
+          "CurrentOdds": 13,
+          "ExpectedValue": 4.666932,
+          "KellyFraction": 0.388911,
+          "ShouldBet": true,
+          "Confidence": "High"
+        },
+        {
+          "RoundId": 9596,
+          "Arena": 0,
+          "PirateId": 4,
+          "WinProbability": 0.9999988,
+          "CurrentOdds": 3,
+          "ExpectedValue": 1.9999964,
+          "KellyFraction": 0.9999982,
+          "ShouldBet": true,
+          "Confidence": "High"
+        },
+        {
+          "RoundId": 9596,
+          "Arena": 1,
+          "PirateId": 3,
+          "WinProbability": 0.99999946,
+          "CurrentOdds": 2,
+          "ExpectedValue": 0.9999989,
+          "KellyFraction": 0.9999989,
+          "ShouldBet": true,
+          "Confidence": "High"
+        }
+      ],
+      "TotalOdds": 1014,
+      "CombinedProbability": 0.43566638,
+      "ExpectedValue": 440.76572,
+      "Strategy": "Aggressive",
+      "RiskLevel": "High"
+    },
+    {
+      "Picks": [
+        {
+          "RoundId": 9693,
+          "Arena": 2,
+          "PirateId": 4,
+          "WinProbability": 0.92105526,
+          "CurrentOdds": 13,
+          "ExpectedValue": 10.973719,
+          "KellyFraction": 0.91447645,
+          "ShouldBet": true,
+          "Confidence": "High"
+        },
+        {
+          "RoundId": 9693,
+          "Arena": 3,
+          "PirateId": 1,
+          "WinProbability": 0.9862035,
+          "CurrentOdds": 9,
+          "ExpectedValue": 7.8758316,
+          "KellyFraction": 0.98447895,
+          "ShouldBet": true,
+          "Confidence": "High"
+        },
+        {
+          "RoundId": 9693,
+          "Arena": 1,
+          "PirateId": 3,
+          "WinProbability": 0.9524665,
+          "CurrentOdds": 2,
+          "ExpectedValue": 0.904933,
+          "KellyFraction": 0.904933,
+          "ShouldBet": true,
+          "Confidence": "High"
+        },
+        {
+          "RoundId": 9693,
+          "Arena": 0,
+          "PirateId": 2,
+          "WinProbability": 0.8659862,
+          "CurrentOdds": 2,
+          "ExpectedValue": 0.73197246,
+          "KellyFraction": 0.73197246,
+          "ShouldBet": true,
+          "Confidence": "High"
+        }
+      ],
+      "TotalOdds": 468,
+      "CombinedProbability": 0.74922615,
+      "ExpectedValue": 349.63785,
+      "Strategy": "Balanced",
+      "RiskLevel": "Medium"
+    },
+    {
+      "Picks": [
+        {
+          "RoundId": 9693,
+          "Arena": 2,
+          "PirateId": 4,
+          "WinProbability": 0.92105526,
+          "CurrentOdds": 13,
+          "ExpectedValue": 10.973719,
+          "KellyFraction": 0.91447645,
+          "ShouldBet": true,
+          "Confidence": "High"
+        },
+        {
+          "RoundId": 9693,
+          "Arena": 3,
+          "PirateId": 1,
+          "WinProbability": 0.9862035,
+          "CurrentOdds": 9,
+          "ExpectedValue": 7.8758316,
+          "KellyFraction": 0.98447895,
+          "ShouldBet": true,
+          "Confidence": "High"
+        },
+        {
+          "RoundId": 9693,
+          "Arena": 1,
+          "PirateId": 3,
+          "WinProbability": 0.9524665,
+          "CurrentOdds": 2,
+          "ExpectedValue": 0.904933,
+          "KellyFraction": 0.904933,
+          "ShouldBet": true,
+          "Confidence": "High"
+        },
+        {
+          "RoundId": 9693,
+          "Arena": 0,
+          "PirateId": 2,
+          "WinProbability": 0.8659862,
+          "CurrentOdds": 2,
+          "ExpectedValue": 0.73197246,
+          "KellyFraction": 0.73197246,
+          "ShouldBet": true,
+          "Confidence": "High"
+        }
+      ],
+      "TotalOdds": 468,
+      "CombinedProbability": 0.74922615,
+      "ExpectedValue": 349.63785,
+      "Strategy": "Aggressive",
+      "RiskLevel": "Medium"
+    }
+  ],
+  "ModelPerformance": "Check logs for detailed metrics"
+}

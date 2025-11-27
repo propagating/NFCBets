@@ -1,0 +1,11 @@
+E:\Projects\C#\NFCBets\NFCBets.DAL\bin\Debug\net10.0\NFCBets.DAL.deps.json
+E:\Projects\C#\NFCBets\NFCBets.DAL\bin\Debug\net10.0\NFCBets.DAL.dll
+E:\Projects\C#\NFCBets\NFCBets.DAL\bin\Debug\net10.0\NFCBets.DAL.pdb
+E:\Projects\C#\NFCBets\NFCBets.DAL\obj\Debug\net10.0\NFCBets.DAL.GeneratedMSBuildEditorConfig.editorconfig
+E:\Projects\C#\NFCBets\NFCBets.DAL\obj\Debug\net10.0\NFCBets.DAL.AssemblyInfoInputs.cache
+E:\Projects\C#\NFCBets\NFCBets.DAL\obj\Debug\net10.0\NFCBets.DAL.AssemblyInfo.cs
+E:\Projects\C#\NFCBets\NFCBets.DAL\obj\Debug\net10.0\NFCBets.DAL.csproj.CoreCompileInputs.cache
+E:\Projects\C#\NFCBets\NFCBets.DAL\obj\Debug\net10.0\NFCBets.DAL.dll
+E:\Projects\C#\NFCBets\NFCBets.DAL\obj\Debug\net10.0\refint\NFCBets.DAL.dll
+E:\Projects\C#\NFCBets\NFCBets.DAL\obj\Debug\net10.0\NFCBets.DAL.pdb
+E:\Projects\C#\NFCBets\NFCBets.DAL\obj\Debug\net10.0\ref\NFCBets.DAL.dll
