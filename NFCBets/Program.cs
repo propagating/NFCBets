@@ -48,15 +48,15 @@ namespace NFCBets.Testing
             Console.WriteLine("🚀 COMPREHENSIVE FOOD CLUB ANALYSIS");
             Console.WriteLine("===================================");
             
-            // Step 1: Find full available range
-            logger.LogInformation("\n📊 Step 1: Finding complete data range...");
-            var (minRound, maxRound) = await FindFullDataRange(dataService);
-            logger.LogInformation($"Available data: Round {minRound} to {maxRound} ({maxRound - minRound + 1} rounds)");
-            
-            // Step 2: Collect ALL historical data
-            logger.LogInformation("\n📥 Step 2: Collecting complete historical dataset...");
-            var collectedRounds = await CollectCompleteDataset(dataService, minRound, maxRound, logger);
-            logger.LogInformation($"✅ Collected {collectedRounds.Count} rounds successfully");
+            // // Step 1: Find full available range
+            // logger.LogInformation("\n📊 Step 1: Finding complete data range...");
+            // var (minRound, maxRound) = await FindFullDataRange(dataService);
+            // logger.LogInformation($"Available data: Round {minRound} to {maxRound} ({maxRound - minRound + 1} rounds)");
+            //
+            // // Step 2: Collect ALL historical data
+            // logger.LogInformation("\n📥 Step 2: Collecting complete historical dataset...");
+            // var collectedRounds = await CollectCompleteDataset(dataService, minRound, maxRound, logger);
+            // logger.LogInformation($"✅ Collected {collectedRounds.Count} rounds successfully");
 
             // Step 3: Generate comprehensive features
             logger.LogInformation("\n🔧 Step 3: Engineering features for complete dataset...");
