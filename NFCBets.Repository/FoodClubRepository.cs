@@ -117,7 +117,7 @@ namespace NFCBets.Repository;
             .ToListAsync();
         
         var existingFoodCourses = await _db.RoundFoodCourses
-            .Where(rfc => rfc.RounId == round.Round)
+            .Where(rfc => rfc.RoundId == round.Round)
             .ToListAsync();
         
         var existingResults = await _db.RoundResults
@@ -128,7 +128,7 @@ namespace NFCBets.Repository;
             .ToDictionary(p => new { p.RoundId, p.ArenaId, p.PirateId }, p => p);
         
         var foodCourseLookup = existingFoodCourses
-            .ToDictionary(f => new { f.RounId, f.ArenaId, f.FoodId }, f => f);
+            .ToDictionary(f => new { f.RoundId, f.ArenaId, f.FoodId }, f => f);
         
         var resultLookup = existingResults
             .ToDictionary(r => new { r.RoundId, r.ArenaId, r.PirateId }, r => r);
@@ -147,13 +147,13 @@ namespace NFCBets.Repository;
         {
             var pirate = pirateIds[p];
             var placementKey = new { RoundId = (int?)round.Round, ArenaId = (int?)arenaId, PirateId = (int?)pirate };
-            
+            var foodIdsForArena = round.Foods[i];
+            var adjustment = await CalculatePirateFoodAdjustmentAsync(pirate, foodIdsForArena);
             if (placementLookup.TryGetValue(placementKey, out var existingPlacement))
             {
                 // Update existing placement
                 existingPlacement.PirateSeatPosition = p;
-                existingPlacement.PirateFoodAdjustment = 0; // You might want to calculate this properly
-                // Don't update StartingOdds - those should remain as originally set
+                existingPlacement.PirateFoodAdjustment = adjustment;
                 existingPlacement.CurrentOdds = currentOds[p];
             }
             else
@@ -177,14 +177,14 @@ namespace NFCBets.Repository;
         // Handle RoundFoodCourses
         foreach (var food in foodIds)
         {
-            var foodCourseKey = new { RounId = round.Round, ArenaId = arenaId, FoodId = food };
+            var foodCourseKey = new { RoundId = round.Round, ArenaId = arenaId, FoodId = food };
             
             if (!foodCourseLookup.ContainsKey(foodCourseKey))
             {
                 // Add new food course (these typically don't change, so no update needed)
                 var newFoodCourse = new RoundFoodCourse
                 {
-                    RounId = round.Round,
+                    RoundId = round.Round,
                     ArenaId = arenaId,
                     FoodId = food
                 };

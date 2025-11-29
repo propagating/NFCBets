@@ -90,6 +90,7 @@ namespace NFCBets.Services
 
         private async Task SaveRoundDataAsync(FoodClubRoundData roundData)
         {
+            using var transaction = await _context.Database.BeginTransactionAsync();
             try
             {
                 for (int arenaIndex = 0; arenaIndex < roundData.Pirates.Count; arenaIndex++)
@@ -100,6 +101,7 @@ namespace NFCBets.Services
                     var openingOdds = roundData.OpeningOdds[arenaIndex];
                     var currentOdds = roundData.CurrentOdds[arenaIndex];
                     var arenaId = arenaIndex + 1;
+                    
                     // Save food courses for this arena
                     await SaveFoodCoursesAsync(roundData.Round, arenaId, foodIds);
 
@@ -116,10 +118,12 @@ namespace NFCBets.Services
                 }
 
                 await _context.SaveChangesAsync();
+                await transaction.CommitAsync();
             }
             catch (Exception e)
             {
                 Console.WriteLine(e);
+                await transaction.RollbackAsync();
                 throw;
             }
         }
@@ -129,7 +133,7 @@ namespace NFCBets.Services
             foreach (var foodId in foodIds)
             {
                 var existing = await _context.RoundFoodCourses
-                    .FirstOrDefaultAsync(rfc => rfc.RounId == roundId && 
+                    .FirstOrDefaultAsync(rfc => rfc.RoundId == roundId && 
                                                rfc.ArenaId == arenaId && 
                                                rfc.FoodId == foodId);
 
@@ -137,7 +141,7 @@ namespace NFCBets.Services
                 {
                     _context.RoundFoodCourses.Add(new RoundFoodCourse
                     {
-                        RounId = roundId,
+                        RoundId = roundId,
                         ArenaId = arenaId,
                         FoodId = foodId
                     });

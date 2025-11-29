@@ -7,7 +7,7 @@ public partial class RoundFoodCourse
 {
     public int Id { get; set; }
 
-    public int RounId { get; set; }
+    public int RoundId { get; set; }
 
     public int ArenaId { get; set; }
 

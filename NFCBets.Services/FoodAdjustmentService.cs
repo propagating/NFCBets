@@ -104,7 +104,7 @@ namespace NFCBets.Services
         private async Task<List<int>> GetServedFoodCategoriesAsync(int roundId, int arenaId)
         {
             var foods = await _context.RoundFoodCourses
-                .Where(rfc => rfc.RounId == roundId && rfc.ArenaId == arenaId)
+                .Where(rfc => rfc.RoundId == roundId && rfc.ArenaId == arenaId)
                 .Select(x => x.FoodId)
                 .ToListAsync();
 

@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("NFCBets.EF")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+5ba83a0820ed26c3c4e2d05f301e1aa6df2d4f27")]
 [assembly: System.Reflection.AssemblyProductAttribute("NFCBets.EF")]
 [assembly: System.Reflection.AssemblyTitleAttribute("NFCBets.EF")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
