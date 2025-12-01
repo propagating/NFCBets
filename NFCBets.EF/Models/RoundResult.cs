@@ -1,9 +1,6 @@
-﻿using System;
-using System.Collections.Generic;
+﻿namespace NFCBets.EF.Models;
 
-namespace NFCBets.EF.Models;
-
-public partial class RoundResult
+public class RoundResult
 {
     public int Id { get; set; }
 

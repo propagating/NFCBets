@@ -13,5 +13,7 @@ public class PirateRecord
     public int TotalOddsChanges { get; set; }
     public double PriorWinRate { get; set; }
     public double RecentForm { get; set; }
-    public double OddsMovement => OpeningOdds.HasValue ? (double)(CurrentOdds - OpeningOdds.Value) / OpeningOdds.Value : 0;
+
+    public double OddsMovement =>
+        OpeningOdds.HasValue ? (double)(CurrentOdds - OpeningOdds.Value) / OpeningOdds.Value : 0;
 }

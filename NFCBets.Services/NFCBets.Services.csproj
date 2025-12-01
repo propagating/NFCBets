@@ -7,13 +7,13 @@
     </PropertyGroup>
 
     <ItemGroup>
-      <ProjectReference Include="..\NFCBets.Repository\NFCBets.Repository.csproj" />
+        <ProjectReference Include="..\NFCBets.Repository\NFCBets.Repository.csproj"/>
     </ItemGroup>
 
     <ItemGroup>
-      <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.0" />
-      <PackageReference Include="Microsoft.ML" Version="5.0.0" />
-      <PackageReference Include="Microsoft.ML.LightGbm" Version="5.0.0" />
+        <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.0"/>
+        <PackageReference Include="Microsoft.ML" Version="5.0.0"/>
+        <PackageReference Include="Microsoft.ML.LightGbm" Version="5.0.0"/>
     </ItemGroup>
 
 </Project>

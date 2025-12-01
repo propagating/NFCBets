@@ -3,18 +3,18 @@ using NFCBets.EF.Models;
 using NFCBets.Services.Interfaces;
 using NFCBets.Services.Models;
 
-namespace NFCBets.Services
-{
+namespace NFCBets.Services;
+
 public class MlModelService : IMlModelService
 {
-    private readonly MLContext _mlContext;
-    private readonly IFeatureEngineeringService _featureService;
     private readonly NfcbetsContext _context;
+    private readonly IFeatureEngineeringService _featureService;
+    private readonly MLContext _mlContext;
     private ITransformer? _model;
 
     public MlModelService(IFeatureEngineeringService featureService, NfcbetsContext context)
     {
-        _mlContext = new MLContext(seed: 42);
+        _mlContext = new MLContext(42);
         _featureService = featureService;
         _context = context;
     }
@@ -24,7 +24,7 @@ public class MlModelService : IMlModelService
     {
         Console.WriteLine("🤖 Training and evaluating ML model...");
 
-        var allData = await _featureService.CreateTrainingDataAsync(4000);
+        var allData = await _featureService.CreateTrainingDataAsync(10000);
         var validData = allData.Where(f => f.IsWinner.HasValue).ToList();
 
         Console.WriteLine($"Total valid training data: {validData.Count} records");
@@ -39,10 +39,7 @@ public class MlModelService : IMlModelService
         if (leakageReport.HasLeakage)
         {
             Console.WriteLine("❌ Data leakage detected! Please fix issues before proceeding.");
-            foreach (var issue in leakageReport.LeakageIssues.Take(10))
-            {
-                Console.WriteLine($"   {issue}");
-            }
+            foreach (var issue in leakageReport.LeakageIssues.Take(10)) Console.WriteLine($"   {issue}");
             return;
         }
 
@@ -54,8 +51,10 @@ public class MlModelService : IMlModelService
         var trainData = sortedData.Take(splitIndex).ToList();
         var testData = sortedData.Skip(splitIndex).ToList();
 
-        Console.WriteLine($"   Training set: {trainData.Count} records (rounds {trainData.Min(f => f.RoundId)}-{trainData.Max(f => f.RoundId)})");
-        Console.WriteLine($"   Test set:     {testData.Count} records (rounds {testData.Min(f => f.RoundId)}-{testData.Max(f => f.RoundId)})");
+        Console.WriteLine(
+            $"   Training set: {trainData.Count} records (rounds {trainData.Min(f => f.RoundId)}-{trainData.Max(f => f.RoundId)})");
+        Console.WriteLine(
+            $"   Test set:     {testData.Count} records (rounds {testData.Min(f => f.RoundId)}-{testData.Max(f => f.RoundId)})");
 
         // Convert to ML.NET format and train
         Console.WriteLine("\n🏋️ Step 3: Training model...");
@@ -77,12 +76,9 @@ public class MlModelService : IMlModelService
                 nameof(MlPirateFeature.AvgRivalStrength))
             .Append(_mlContext.Transforms.NormalizeMinMax("Features"))
             .Append(_mlContext.BinaryClassification.Trainers.LightGbm(
-                labelColumnName: nameof(MlPirateFeature.Won),
-                featureColumnName: "Features",
-                numberOfIterations: 100))
+                nameof(MlPirateFeature.Won)))
             .Append(_mlContext.BinaryClassification.Calibrators.Platt(
-                labelColumnName: nameof(MlPirateFeature.Won),
-                scoreColumnName: "Score"));
+                nameof(MlPirateFeature.Won)));
 
         var startTime = DateTime.Now;
         _model = pipeline.Fit(dataView);
@@ -100,8 +96,8 @@ public class MlModelService : IMlModelService
 
         Console.WriteLine("\n📊 Feature Importance Ranking:");
         var sortedImportance = importanceReport.FeatureImportance.OrderByDescending(f => f.Importance).ToList();
-        
-        for (int i = 0; i < sortedImportance.Count; i++)
+
+        for (var i = 0; i < sortedImportance.Count; i++)
         {
             var (featureName, importance) = sortedImportance[i];
             var indicator = i < 3 ? "🔴" : i < 6 ? "🟡" : "🟢";
@@ -110,26 +106,18 @@ public class MlModelService : IMlModelService
 
         // Recommendations based on evaluation
         Console.WriteLine("\n💡 Recommendations:");
-        
+
         if (evaluationReport.AUC < 0.6)
-        {
             Console.WriteLine("   ⚠️ Low AUC - Consider adding more features or collecting more data");
-        }
-        else if (evaluationReport.AUC > 0.8)
-        {
-            Console.WriteLine("   ✅ Strong predictive power");
-        }
+        else if (evaluationReport.AUC > 0.8) Console.WriteLine("   ✅ Strong predictive power");
 
         if (evaluationReport.CalibrationMetrics.OverallCalibrationError > 0.15)
-        {
             Console.WriteLine("   ⚠️ Poor probability calibration - Consider using different calibration method");
-        }
 
         var lowImportanceFeatures = sortedImportance.Where(f => Math.Abs(f.Importance) < 0.001).ToList();
         if (lowImportanceFeatures.Any())
-        {
-            Console.WriteLine($"   💡 Consider removing low-importance features: {string.Join(", ", lowImportanceFeatures.Select(f => f.FeatureName))}");
-        }
+            Console.WriteLine(
+                $"   💡 Consider removing low-importance features: {string.Join(", ", lowImportanceFeatures.Select(f => f.FeatureName))}");
 
         Console.WriteLine("\n✅ Model training and evaluation complete");
     }
@@ -138,14 +126,14 @@ public class MlModelService : IMlModelService
     {
         Console.WriteLine("🤖 Training ML model (without detailed evaluation)...");
 
-        var trainingData = await _featureService.CreateTrainingDataAsync(4000);
+        var trainingData = await _featureService.CreateTrainingDataAsync();
         var validData = trainingData.Where(f => f.IsWinner.HasValue).ToList();
 
         Console.WriteLine($"Training with {validData.Count} records");
 
         var mlData = ConvertToMLFormat(validData);
         var dataView = _mlContext.Data.LoadFromEnumerable(mlData);
-        var trainTestSplit = _mlContext.Data.TrainTestSplit(dataView, testFraction: 0.2);
+        var trainTestSplit = _mlContext.Data.TrainTestSplit(dataView, 0.2);
 
         var pipeline = _mlContext.Transforms.Concatenate("Features",
                 nameof(MlPirateFeature.Position),
@@ -162,77 +150,54 @@ public class MlModelService : IMlModelService
                 nameof(MlPirateFeature.AvgRivalStrength))
             .Append(_mlContext.Transforms.NormalizeMinMax("Features"))
             .Append(_mlContext.BinaryClassification.Trainers.LightGbm(
-                labelColumnName: nameof(MlPirateFeature.Won),
-                featureColumnName: "Features",
-                numberOfIterations: 100))
+                nameof(MlPirateFeature.Won)))
             .Append(_mlContext.BinaryClassification.Calibrators.Platt(
-                labelColumnName: nameof(MlPirateFeature.Won),
-                scoreColumnName: "Score"));
+                nameof(MlPirateFeature.Won)));
 
         _model = pipeline.Fit(trainTestSplit.TrainSet);
 
         var predictions = _model.Transform(trainTestSplit.TestSet);
-        var metrics = _mlContext.BinaryClassification.Evaluate(predictions, labelColumnName: nameof(MlPirateFeature.Won));
+        var metrics = _mlContext.BinaryClassification.Evaluate(predictions, nameof(MlPirateFeature.Won));
 
         Console.WriteLine($"✅ Model trained - Accuracy: {metrics.Accuracy:P2}, AUC: {metrics.AreaUnderRocCurve:F3}");
     }
 
-    private List<MlPirateFeature> ConvertToMLFormat(List<PirateFeatureRecord> features)
+    public async Task<List<PiratePrediction>> PredictAsync(List<PirateFeatureRecord> features)
     {
-        return features.Select(f => new MlPirateFeature
+        if (_model == null)
+            throw new InvalidOperationException("Model must be trained first");
+
+        var mlData = features.Select(f => new MlPirateFeature
         {
-            Position = (float)f.Position,
-            CurrentOdds = (float)f.CurrentOdds,
-            FoodAdjustment = (float)f.FoodAdjustment,
-            Strength = (float)f.Strength,
-            Weight = (float)f.Weight,
+            Position = f.Position,
+            CurrentOdds = f.CurrentOdds,
+            FoodAdjustment = f.FoodAdjustment,
+            Strength = f.Strength,
+            Weight = f.Weight,
             HistoricalWinRate = (float)f.HistoricalWinRate,
-            TotalAppearances = (float)f.TotalAppearances,
+            TotalAppearances = f.TotalAppearances,
             ArenaWinRate = (float)f.ArenaWinRate,
             RecentWinRate = (float)f.RecentWinRate,
             WinRateVsCurrentRivals = (float)f.WinRateVsCurrentRivals,
-            MatchesVsCurrentRivals = (float)f.MatchesVsCurrentRivals,
+            MatchesVsCurrentRivals = f.MatchesVsCurrentRivals,
             AvgRivalStrength = (float)f.AvgRivalStrength,
-            Won = f.IsWinner ?? false
+            Won = false
+        }).ToList();
+
+        var dataView = _mlContext.Data.LoadFromEnumerable(mlData);
+        var predictions = _model.Transform(dataView);
+
+        var predictionResults = _mlContext.Data.CreateEnumerable<PiratePredictionOutput>(predictions, false).ToList();
+
+        return predictionResults.Zip(features, (pred, feat) => new PiratePrediction
+        {
+            RoundId = feat.RoundId,
+            ArenaId = feat.ArenaId,
+            PirateId = feat.PirateId,
+            WinProbability = pred.Probability,
+            Payout = Math.Max(2, feat.CurrentOdds) // Correct odds here
         }).ToList();
     }
-
-public async Task<List<PiratePrediction>> PredictAsync(List<PirateFeatureRecord> features)
-{
-    if (_model == null)
-        throw new InvalidOperationException("Model must be trained first");
-
-    var mlData = features.Select(f => new MlPirateFeature
-    {
-        Position = (float)f.Position,
-        CurrentOdds = (float)f.CurrentOdds,
-        FoodAdjustment = (float)f.FoodAdjustment,
-        Strength = (float)f.Strength,
-        Weight = (float)f.Weight,
-        HistoricalWinRate = (float)f.HistoricalWinRate,
-        TotalAppearances = (float)f.TotalAppearances,
-        ArenaWinRate = (float)f.ArenaWinRate,
-        RecentWinRate = (float)f.RecentWinRate,
-        WinRateVsCurrentRivals = (float)f.WinRateVsCurrentRivals,
-        MatchesVsCurrentRivals = (float)f.MatchesVsCurrentRivals,
-        AvgRivalStrength = (float)f.AvgRivalStrength,
-        Won = false
-    }).ToList();
-
-    var dataView = _mlContext.Data.LoadFromEnumerable(mlData);
-    var predictions = _model.Transform(dataView);
-
-    var predictionResults = _mlContext.Data.CreateEnumerable<PiratePredictionOutput>(predictions, false).ToList();
-
-    return predictionResults.Zip(features, (pred, feat) => new PiratePrediction
-    {
-        RoundId = feat.RoundId,
-        ArenaId = feat.ArenaId,
-        PirateId = feat.PirateId,
-        WinProbability = pred.Probability,
-        Payout = feat.CurrentOdds
-    }).ToList();
-}
 
     public void SaveModel(string path)
     {
@@ -249,6 +214,24 @@ public async Task<List<PiratePrediction>> PredictAsync(List<PirateFeatureRecord>
         _model = _mlContext.Model.Load(path, out _);
         Console.WriteLine($"📂 Model loaded from {path}");
     }
-}
 
+    private List<MlPirateFeature> ConvertToMLFormat(List<PirateFeatureRecord> features)
+    {
+        return features.Select(f => new MlPirateFeature
+        {
+            Position = f.Position,
+            CurrentOdds = f.CurrentOdds,
+            FoodAdjustment = f.FoodAdjustment,
+            Strength = f.Strength,
+            Weight = f.Weight,
+            HistoricalWinRate = (float)f.HistoricalWinRate,
+            TotalAppearances = f.TotalAppearances,
+            ArenaWinRate = (float)f.ArenaWinRate,
+            RecentWinRate = (float)f.RecentWinRate,
+            WinRateVsCurrentRivals = (float)f.WinRateVsCurrentRivals,
+            MatchesVsCurrentRivals = f.MatchesVsCurrentRivals,
+            AvgRivalStrength = (float)f.AvgRivalStrength,
+            Won = f.IsWinner ?? false
+        }).ToList();
+    }
 }

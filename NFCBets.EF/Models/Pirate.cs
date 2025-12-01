@@ -1,9 +1,6 @@
-﻿using System;
-using System.Collections.Generic;
+﻿namespace NFCBets.EF.Models;
 
-namespace NFCBets.EF.Models;
-
-public partial class Pirate
+public class Pirate
 {
     public int Id { get; set; }
 
@@ -19,11 +16,14 @@ public partial class Pirate
 
     public int? Losses { get; set; }
 
-    public virtual ICollection<FoodCategoryAllergy> FoodCategoryAllergies { get; set; } = new List<FoodCategoryAllergy>();
+    public virtual ICollection<FoodCategoryAllergy> FoodCategoryAllergies { get; set; } =
+        new List<FoodCategoryAllergy>();
 
-    public virtual ICollection<FoodCategoryPreference> FoodCategoryPreferences { get; set; } = new List<FoodCategoryPreference>();
+    public virtual ICollection<FoodCategoryPreference> FoodCategoryPreferences { get; set; } =
+        new List<FoodCategoryPreference>();
 
-    public virtual ICollection<RoundPiratePlacement> RoundPiratePlacements { get; set; } = new List<RoundPiratePlacement>();
+    public virtual ICollection<RoundPiratePlacement> RoundPiratePlacements { get; set; } =
+        new List<RoundPiratePlacement>();
 
     public virtual ICollection<RoundResult> RoundResults { get; set; } = new List<RoundResult>();
 }

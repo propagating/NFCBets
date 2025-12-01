@@ -1,9 +1,6 @@
-﻿using System;
-using System.Collections.Generic;
+﻿namespace NFCBets.EF.Models;
 
-namespace NFCBets.EF.Models;
-
-public partial class RoundPiratePlacement
+public class RoundPiratePlacement
 {
     public int Id { get; set; }
 
