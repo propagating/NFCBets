@@ -29,7 +29,7 @@ internal class Program
         var pipeline = host.Services.GetRequiredService<IDailyBettingPipeline>();
         var dataService = host.Services.GetRequiredService<IFoodClubDataService>();
 
-        var modelPath = "Models/foodclub_evaluated_model.zip";
+        var modelPath = $"Models/foodclub_evaluated_model-{DateTime.Now}.zip";
 
         if (!File.Exists(modelPath) || args.Contains("--retrain"))
         {

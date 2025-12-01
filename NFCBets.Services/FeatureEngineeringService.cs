@@ -49,7 +49,7 @@ public class FeatureEngineeringService : IFeatureEngineeringService
         return features;
     }
 
-    public async Task<List<PirateFeatureRecord>> CreateTrainingDataAsync(int maxRounds = 10000)
+    public async Task<List<PirateFeatureRecord>> CreateTrainingDataAsync(int maxRounds = 3800)
     {
         var features = new List<PirateFeatureRecord>();
 
