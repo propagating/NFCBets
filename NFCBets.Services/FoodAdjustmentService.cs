@@ -3,12 +3,6 @@ using NFCBets.EF.Models;
 
 namespace NFCBets.Services
 {
-    public interface IFoodAdjustmentService
-    {
-        Task<int> CalculateFoodAdjustmentAsync(int pirateId, int roundId, int arenaId);
-        Task<Dictionary<int, int>> CalculateAllArenaAdjustmentsAsync(int roundId, int arenaId);
-    }
-
     public class FoodAdjustmentService : IFoodAdjustmentService
     {
         private readonly NfcbetsContext _context;
@@ -20,7 +14,7 @@ namespace NFCBets.Services
 
         /// <summary>
         /// Calculate food adjustment for a specific pirate in a specific arena/round.
-        /// Returns -3 to +3 based on (preferences count - allergies count) for food categories served.
+        /// Returns -3 to +3 based on (preferences count - allergies count) for food categories served.dddd
         /// </summary>
         public async Task<int> CalculateFoodAdjustmentAsync(int pirateId, int roundId, int arenaId)
         {
