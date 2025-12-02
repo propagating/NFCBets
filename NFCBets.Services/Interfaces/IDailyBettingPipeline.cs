@@ -1,4 +1,6 @@
-namespace NFCBets.Services;
+using NFCBets.Services.Models;
+
+namespace NFCBets.Services.Interfaces;
 
 public interface IDailyBettingPipeline
 {

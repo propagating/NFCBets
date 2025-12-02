@@ -1,4 +1,4 @@
-namespace NFCBets.Services;
+namespace NFCBets.Services.Interfaces;
 
 public interface IFoodClubDataService
 {

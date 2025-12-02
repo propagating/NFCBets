@@ -59,3 +59,4 @@ E:\Projects\C#\NFCBets\NFCBets.Repository\obj\Debug\net10.0\NFCBets.Repository.d
 E:\Projects\C#\NFCBets\NFCBets.Repository\obj\Debug\net10.0\refint\NFCBets.Repository.dll
 E:\Projects\C#\NFCBets\NFCBets.Repository\obj\Debug\net10.0\NFCBets.Repository.pdb
 E:\Projects\C#\NFCBets\NFCBets.Repository\obj\Debug\net10.0\ref\NFCBets.Repository.dll
+E:\Projects\C#\NFCBets\NFCBets.Repository\obj\Debug\net10.0\NFCBets.Repository.sourcelink.json

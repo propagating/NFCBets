@@ -1,6 +1,6 @@
 using NFCBets.Services.Models;
 
-namespace NFCBets.Services;
+namespace NFCBets.Services.Interfaces;
 
 public interface IBettingStrategyService
 {

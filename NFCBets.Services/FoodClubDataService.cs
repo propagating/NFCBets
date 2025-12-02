@@ -1,6 +1,10 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata.Conventions;
+using Microsoft.Extensions.Logging;
 using NFCBets.EF.Models;
+using NFCBets.Services.Interfaces;
+using NFCBets.Services.Models;
 
 namespace NFCBets.Services;
 
@@ -9,13 +13,15 @@ public class FoodClubDataService : IFoodClubDataService
     private readonly NfcbetsContext _context;
     private readonly IFoodAdjustmentService _foodAdjustmentService;
     private readonly HttpClient _httpClient;
+    private readonly ILogger _logger;
 
     public FoodClubDataService(HttpClient httpClient, NfcbetsContext context,
-        IFoodAdjustmentService foodAdjustmentService)
+        IFoodAdjustmentService foodAdjustmentService, ILogger logger)
     {
         _httpClient = httpClient;
         _context = context;
         _foodAdjustmentService = foodAdjustmentService;
+        _logger = logger;
     }
 
     public async Task<bool> CollectAndSaveRoundAsync(int roundId)
@@ -33,7 +39,7 @@ public class FoodClubDataService : IFoodClubDataService
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error collecting round {roundId}: {ex.Message}");
+            _logger.LogError($"Error collecting round {roundId}: {ex.Message}");
             return false;
         }
     }
@@ -44,18 +50,20 @@ public class FoodClubDataService : IFoodClubDataService
 
         for (var round = startRound; round <= endRound; round++)
         {
+            if (_context.RoundResults.Where(x => x.IsComplete).Select(x => x.RoundId).Contains(round))
+            {
+                _logger.LogInformation($"Skipping round {round} as it's already been collected");
+                continue;
+            }
             if (await CollectAndSaveRoundAsync(round))
             {
                 successfulRounds.Add(round);
-                Console.WriteLine($"✅ Collected round {round}");
+                _logger.LogInformation($"✅ Collected round {round}");
             }
             else
             {
-                Console.WriteLine($"❌ Failed round {round}");
+                _logger.LogWarning($"❌ Failed round {round}");
             }
-
-            // Rate limiting
-            await Task.Delay(100);
         }
 
         return successfulRounds;
@@ -104,9 +112,15 @@ public class FoodClubDataService : IFoodClubDataService
 
                 await _context.SaveChangesAsync();
 
+                
                 // Save results if round is complete
                 if (roundData.Winners?.Any() == true)
-                    await SaveRoundResultsAsync(roundData.Round, arenaId, pirateIds, currentOdds, roundData.Winners);
+                {
+                    var winnerPosition = roundData.Winners[arenaIndex];
+                    var winnerId = roundData.Pirates[arenaIndex][winnerPosition-1];
+                    await SaveRoundResultsAsync(roundData.Round, arenaId, pirateIds, currentOdds, winnerId);
+                        
+                }
             }
 
             await _context.SaveChangesAsync();
@@ -177,12 +191,12 @@ public class FoodClubDataService : IFoodClubDataService
     }
 
     private async Task SaveRoundResultsAsync(int roundId, int arenaId, List<int> pirateIds, List<int> endingOdds,
-        List<int> winners)
+        int winnerId)
     {
         for (var position = 0; position < pirateIds.Count; position++)
         {
             var pirateId = pirateIds[position];
-            var isWinner = winners.Contains(pirateId);
+            var isWinner = winnerId == pirateId;
 
             var existing = await _context.RoundResults
                 .FirstOrDefaultAsync(rr => rr.RoundId == roundId &&

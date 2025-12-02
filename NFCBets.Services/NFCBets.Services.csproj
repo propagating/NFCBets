@@ -8,6 +8,7 @@
 
     <ItemGroup>
         <ProjectReference Include="..\NFCBets.Repository\NFCBets.Repository.csproj"/>
+        <ProjectReference Include="..\NFCBets.Utilities\NFCBets.Utilities.csproj" />
     </ItemGroup>
 
     <ItemGroup>

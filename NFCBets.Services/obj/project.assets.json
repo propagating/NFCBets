@@ -1159,6 +1159,16 @@
         "runtime": {
           "bin/placeholder/NFCBets.Repository.dll": {}
         }
+      },
+      "NFCBets.Utilities/1.0.0": {
+        "type": "project",
+        "framework": ".NETCoreApp,Version=v10.0",
+        "compile": {
+          "bin/placeholder/NFCBets.Utilities.dll": {}
+        },
+        "runtime": {
+          "bin/placeholder/NFCBets.Utilities.dll": {}
+        }
       }
     }
   },
@@ -2668,6 +2678,11 @@
       "type": "project",
       "path": "../NFCBets.Repository/NFCBets.Repository.csproj",
       "msbuildProject": "../NFCBets.Repository/NFCBets.Repository.csproj"
+    },
+    "NFCBets.Utilities/1.0.0": {
+      "type": "project",
+      "path": "../NFCBets.Utilities/NFCBets.Utilities.csproj",
+      "msbuildProject": "../NFCBets.Utilities/NFCBets.Utilities.csproj"
     }
   },
   "projectFileDependencyGroups": {
@@ -2675,7 +2690,8 @@
       "Microsoft.Extensions.Logging.Abstractions >= 10.0.0",
       "Microsoft.ML >= 5.0.0",
       "Microsoft.ML.LightGbm >= 5.0.0",
-      "NFCBets.Repository >= 1.0.0"
+      "NFCBets.Repository >= 1.0.0",
+      "NFCBets.Utilities >= 1.0.0"
     ]
   },
   "packageFolders": {
@@ -2713,6 +2729,9 @@
           "projectReferences": {
             "E:\\Projects\\C#\\NFCBets\\NFCBets.Repository\\NFCBets.Repository.csproj": {
               "projectPath": "E:\\Projects\\C#\\NFCBets\\NFCBets.Repository\\NFCBets.Repository.csproj"
+            },
+            "E:\\Projects\\C#\\NFCBets\\NFCBets.Utilities\\NFCBets.Utilities.csproj": {
+              "projectPath": "E:\\Projects\\C#\\NFCBets\\NFCBets.Utilities\\NFCBets.Utilities.csproj"
             }
           }
         }

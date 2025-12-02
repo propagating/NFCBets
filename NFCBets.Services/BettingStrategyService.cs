@@ -1,4 +1,5 @@
 using NFCBets.Services.Enums;
+using NFCBets.Services.Interfaces;
 using NFCBets.Services.Models;
 
 namespace NFCBets.Services;
@@ -9,19 +10,37 @@ public class BettingStrategyService : IBettingStrategyService
 
     public List<BetSeries> GenerateBetSeries(List<PiratePrediction> predictions)
     {
-        return new List<BetSeries>
+        Console.WriteLine("💰 Generating betting strategies...");
+
+        // Generate all series sequentially (no DB access, so parallel isn't needed)
+        var series = new List<BetSeries>
         {
-            GenerateConservativeSeries(predictions),
-            GenerateBalancedSeries(predictions),
-            GenerateModerateSeries(predictions),
-            GenerateAggressiveSeries(predictions),
-            GenerateHighRiskSeries(predictions)
+            GenerateConservativeSeriesOptimized(predictions),
+            GenerateBalancedSeriesOptimized(predictions),
+            GenerateModerateSeriesOptimized(predictions),
+            GenerateAggressiveSeriesOptimized(predictions),
+            GenerateHighRiskSeriesOptimized(predictions)
         };
+
+        // Validate each series has at least 10 unique bets
+        foreach (var s in series)
+        {
+            if (s.Bets.Count < 10)
+            {
+                Console.WriteLine($"⚠️ Warning: {s.Name} only generated {s.Bets.Count} bets. Generating more...");
+                s.Bets = EnsureMinimumBets(s.Bets, predictions, s.RiskLevel);
+            }
+
+            s.Bets = EnsureUniqueBets(s.Bets);
+        }
+
+        return series;
     }
 
     // Optimization 3: Parallel processing for different series
 
 
+    // OPTIMIZATION: Parallel series generation with task batching
     public List<BetSeries> GenerateBetSeriesParallel(List<PiratePrediction> predictions)
     {
         var seriesTasks = new[]
@@ -33,25 +52,19 @@ public class BettingStrategyService : IBettingStrategyService
             Task.Run(() => GenerateHighRiskSeriesOptimized(predictions))
         };
 
-        Task.WaitAll(seriesTasks);
+        var series = Task.WhenAll(seriesTasks).Result;
 
-        var series = seriesTasks.Select(t => t.Result).ToList();
-
-        // Validate each series has at least 10 unique bets
-        foreach (var s in series)
+        // Validate in parallel
+        Parallel.ForEach(series, s =>
         {
-            if (s.Bets.Count < MIN_BETS_REQUIRED)
+            if (s.Bets.Count < 10)
             {
-                Console.WriteLine(
-                    $"⚠️ Warning: {s.Name} only generated {s.Bets.Count} bets. Attempting to generate more...");
                 s.Bets = EnsureMinimumBets(s.Bets, predictions, s.RiskLevel);
             }
-
-            // Ensure bets are unique
             s.Bets = EnsureUniqueBets(s.Bets);
-        }
+        });
 
-        return series;
+        return series.ToList();
     }
 
     //ensures that we always treat 1:1 odds as 2:1 to reflect the actual odds on the site
@@ -84,6 +97,8 @@ public class BettingStrategyService : IBettingStrategyService
             Description = "High probability picks (>50% win chance)"
         };
     }
+    
+    
 
     private BetSeries GenerateBalancedSeries(List<PiratePrediction> predictions)
     {
@@ -251,7 +266,100 @@ public class BettingStrategyService : IBettingStrategyService
             }
     }
 
+    private List<Bet> GenerateBetCombinationsOptimized(
+        Dictionary<int, List<PiratePrediction>> picksPerArena,
+        int minPirates,
+        int maxPirates,
+        int maxCombinations = 10000) // Limit total combinations
+    {
+        var arenaIds = picksPerArena.Keys.OrderBy(x => x).ToList();
+        var resultBets = new List<Bet>();
+        
+        // Use a priority queue to keep only top bets
+        var topBets = new PriorityQueue<Bet, double>();
 
+        GenerateCombinationsWithPruning(
+            picksPerArena,
+            arenaIds,
+            new List<PiratePrediction>(),
+            0,
+            minPirates,
+            maxPirates,
+            topBets,
+            maxCombinations
+        );
+
+        // Extract bets from priority queue
+        while (topBets.Count > 0)
+        {
+            resultBets.Add(topBets.Dequeue());
+        }
+
+        return resultBets.OrderByDescending(b => b.ExpectedValue).ToList();
+    }
+    
+   private void GenerateCombinationsWithPruning(
+    Dictionary<int, List<PiratePrediction>> picksPerArena,
+    List<int> arenaIds,
+    List<PiratePrediction> currentBet,
+    int arenaIndex,
+    int minPirates,
+    int maxPirates,
+    PriorityQueue<Bet, double> topBets,
+    int maxCombinations)
+{
+    if (arenaIndex == arenaIds.Count)
+    {
+        if (currentBet.Count >= minPirates && currentBet.Count <= maxPirates)
+        {
+            var bet = CreateBet(currentBet);
+            
+            // Keep only top combinations
+            if (topBets.Count < maxCombinations)
+            {
+                topBets.Enqueue(bet, bet.ExpectedValue);
+            }
+            else
+            {
+                // FIX: Properly access the priority queue peek
+                if (topBets.TryPeek(out var lowestBet, out var lowestEV))
+                {
+                    if (bet.ExpectedValue > lowestEV)
+                    {
+                        topBets.Dequeue();
+                        topBets.Enqueue(bet, bet.ExpectedValue);
+                    }
+                }
+            }
+        }
+        return;
+    }
+
+    var currentArenaId = arenaIds[arenaIndex];
+
+    // Early pruning
+    var remainingArenas = arenaIds.Count - arenaIndex;
+    if (currentBet.Count + remainingArenas < minPirates)
+        return;
+
+    // Option 1: Skip this arena
+    if (currentBet.Count + (remainingArenas - 1) >= minPirates)
+    {
+        GenerateCombinationsWithPruning(picksPerArena, arenaIds, currentBet, arenaIndex + 1, minPirates, maxPirates, topBets, maxCombinations);
+    }
+
+    // Option 2: Include pirates from this arena
+    if (picksPerArena.TryGetValue(currentArenaId, out var pirates) && currentBet.Count < maxPirates)
+    {
+        foreach (var pirate in pirates)
+        {
+            currentBet.Add(pirate);
+            GenerateCombinationsWithPruning(picksPerArena, arenaIds, currentBet, arenaIndex + 1, minPirates, maxPirates, topBets, maxCombinations);
+            currentBet.RemoveAt(currentBet.Count - 1);
+        }
+    }
+}
+    
     private Bet CreateBet(List<PiratePrediction> pirates)
     {
         // A bet wins if ALL selected pirates win their arenas
@@ -406,8 +514,8 @@ public class BettingStrategyService : IBettingStrategyService
     // Optimized series generation
     private BetSeries GenerateConservativeSeriesOptimized(List<PiratePrediction> predictions)
     {
-        var safePicks = PreFilterPirates(predictions, 5, 0.5f);
-        var combinations = GenerateBetCombinationsBeamSearch(safePicks, 1, 5, 50);
+        var safePicks = PreFilterPirates(predictions, maxPerArena: 2, minProbability: 0.5f);
+        var combinations = GenerateBetCombinationsOptimized(safePicks, 1, 5, maxCombinations: 5000);
 
         return new BetSeries
         {
@@ -418,10 +526,11 @@ public class BettingStrategyService : IBettingStrategyService
         };
     }
 
+
     private BetSeries GenerateBalancedSeriesOptimized(List<PiratePrediction> predictions)
     {
         var picks = PreFilterPirates(predictions, 5, 0.25f);
-        var combinations = GenerateBetCombinationsBeamSearch(picks, 1, 5);
+        var combinations = GenerateBetCombinationsOptimized(picks, 1, 5, maxCombinations: 5000);
 
         return new BetSeries
         {
@@ -435,7 +544,7 @@ public class BettingStrategyService : IBettingStrategyService
     private BetSeries GenerateModerateSeriesOptimized(List<PiratePrediction> predictions)
     {
         var picks = PreFilterPirates(predictions, 5, 0.15f);
-        var combinations = GenerateBetCombinationsBeamSearch(picks, 1, 5, 150);
+        var combinations = GenerateBetCombinationsOptimized(picks, 1, 5, maxCombinations: 5000);
 
         return new BetSeries
         {
@@ -453,7 +562,7 @@ public class BettingStrategyService : IBettingStrategyService
             .GroupBy(p => p.ArenaId)
             .ToDictionary(g => g.Key, g => g.OrderByDescending(p => CalculateEV(p)).Take(4).ToList());
 
-        var combinations = GenerateBetCombinationsBeamSearch(picks, 1, 5, 200);
+        var combinations = GenerateBetCombinationsOptimized(picks, 1, 5, maxCombinations: 5000);
 
         return new BetSeries
         {
@@ -470,7 +579,7 @@ public class BettingStrategyService : IBettingStrategyService
             .GroupBy(p => p.ArenaId)
             .ToDictionary(g => g.Key, g => g.OrderByDescending(p => p.Payout).Take(3).ToList());
 
-        var combinations = GenerateBetCombinationsBeamSearch(picks, 1, 5);
+        var combinations = GenerateBetCombinationsOptimized(picks, 1, 5, maxCombinations: 5000);
 
         return new BetSeries
         {

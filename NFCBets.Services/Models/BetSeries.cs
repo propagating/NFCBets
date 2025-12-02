@@ -1,6 +1,6 @@
 using NFCBets.Services.Enums;
 
-namespace NFCBets.Services;
+namespace NFCBets.Services.Models;
 
 public class BetSeries
 {

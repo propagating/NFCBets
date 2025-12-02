@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using NFCBets.EF.Models;
+using NFCBets.Services.Interfaces;
 
 namespace NFCBets.Services;
 

@@ -11,7 +11,8 @@
           "Microsoft.Extensions.Logging.Abstractions": "10.0.0",
           "Microsoft.ML": "5.0.0",
           "Microsoft.ML.LightGbm": "5.0.0",
-          "NFCBets.Repository": "1.0.0"
+          "NFCBets.Repository": "1.0.0",
+          "NFCBets.Utilities": "1.0.0"
         },
         "runtime": {
           "NFCBets.Services.dll": {}
@@ -742,6 +743,14 @@
             "fileVersion": "1.0.0.0"
           }
         }
+      },
+      "NFCBets.Utilities/1.0.0": {
+        "runtime": {
+          "NFCBets.Utilities.dll": {
+            "assemblyVersion": "1.0.0.0",
+            "fileVersion": "1.0.0.0"
+          }
+        }
       }
     }
   },
@@ -1065,6 +1074,11 @@
       "sha512": ""
     },
     "NFCBets.Repository/1.0.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    },
+    "NFCBets.Utilities/1.0.0": {
       "type": "project",
       "serviceable": false,
       "sha512": ""

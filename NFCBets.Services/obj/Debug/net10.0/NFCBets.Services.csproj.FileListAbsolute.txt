@@ -61,3 +61,6 @@ E:\Projects\C#\NFCBets\NFCBets.Services\bin\Debug\net10.0\NFCBets.EF.dll
 E:\Projects\C#\NFCBets\NFCBets.Services\bin\Debug\net10.0\NFCBets.Repository.dll
 E:\Projects\C#\NFCBets\NFCBets.Services\bin\Debug\net10.0\NFCBets.Repository.pdb
 E:\Projects\C#\NFCBets\NFCBets.Services\bin\Debug\net10.0\NFCBets.EF.pdb
+E:\Projects\C#\NFCBets\NFCBets.Services\bin\Debug\net10.0\NFCBets.Utilities.dll
+E:\Projects\C#\NFCBets\NFCBets.Services\bin\Debug\net10.0\NFCBets.Utilities.pdb
+E:\Projects\C#\NFCBets\NFCBets.Services\obj\Debug\net10.0\NFCBets.Services.sourcelink.json

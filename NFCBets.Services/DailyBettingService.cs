@@ -1,8 +1,9 @@
 using NFCBets.EF.Models;
-using NFCBets.Services;
 using NFCBets.Services.Interfaces;
+using NFCBets.Services.Models;
+using NFCBets.Utilities;
 
-namespace NFCBets;
+namespace NFCBets.Services;
 
 public class DailyBettingPipeline : IDailyBettingPipeline
 {
@@ -27,14 +28,16 @@ public class DailyBettingPipeline : IDailyBettingPipeline
     {
         Console.WriteLine($"🎯 Generating betting recommendations for Round {roundId}");
 
-        // Step 1: Create features for today's round
+        // Step 1: Create features
         Console.WriteLine("📊 Step 1: Engineering features...");
-        var todayFeatures = await _featureService.CreateFeaturesForRoundAsync(roundId);
+        var todayFeatures = await PerformanceHelper.MeasureAsync("Create Features", () => _featureService.CreateFeaturesForRoundAsync(roundId));
+        //var todayFeatures = await _featureService.CreateFeaturesForRoundAsync(roundId);
         Console.WriteLine($"   Generated {todayFeatures.Count} pirate features");
 
         // Step 2: Predict win probabilities
         Console.WriteLine("🔮 Step 2: Predicting win probabilities...");
-        var predictions = await _mlService.PredictAsync(todayFeatures);
+        var predictions = await PerformanceHelper.MeasureAsync("Predict Win Probabilities", () => _mlService.PredictAsync(todayFeatures));
+        //var predictions = await _mlService.PredictAsync(todayFeatures);
         Console.WriteLine($"   Generated {predictions.Count} predictions");
 
         // Display prediction summary
@@ -42,15 +45,15 @@ public class DailyBettingPipeline : IDailyBettingPipeline
         {
             Console.WriteLine($"   Arena {arenaGroup.Key}:");
             foreach (var pred in arenaGroup.OrderByDescending(p => p.WinProbability))
-                Console.WriteLine(
-                    $"      Pirate {pred.PirateId}: {pred.WinProbability:P2} win chance, {pred.Payout}:1 odds");
+            {
+                Console.WriteLine($"      Pirate {pred.PirateId}: {pred.WinProbability:P2} win chance, {pred.Payout}:1 odds");
+            }
         }
 
-        // Step 3: Generate 5 bet series with different risk levels
+        // Step 3: Generate bet series (SEQUENTIAL - no DbContext needed)
         Console.WriteLine("💰 Step 3: Generating betting strategies...");
         var betSeries = _bettingService.GenerateBetSeriesParallel(predictions);
 
-        // Step 4: Calculate expected returns
         var recommendations = new DailyBettingRecommendations
         {
             RoundId = roundId,
