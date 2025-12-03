@@ -7,7 +7,7 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <ProjectReference Include="..\NFCBets.Causal\NFCBets.Causal.csproj" />
+        <ProjectReference Include="..\NFCBets.Causal\NFCBets.Causal.csproj"/>
         <ProjectReference Include="..\NFCBets.Repository\NFCBets.Repository.csproj"/>
         <ProjectReference Include="..\NFCBets.Utilities\NFCBets.Utilities.csproj"/>
     </ItemGroup>

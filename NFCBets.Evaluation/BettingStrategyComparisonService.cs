@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using NFCBets.EF.Models;
 using NFCBets.Evaluation.Interfaces;
@@ -9,10 +10,10 @@ namespace NFCBets.Evaluation;
 
 public class BettingStrategyComparisonService : IBettingStrategyComparisonService
 {
-    private readonly IFeatureEngineeringService _featureService;
-    private readonly IMlModelService _mlService;
     private readonly IBettingStrategyService _bettingService;
     private readonly NfcbetsContext _context;
+    private readonly IFeatureEngineeringService _featureService;
+    private readonly IMlModelService _mlService;
 
     public BettingStrategyComparisonService(
         IFeatureEngineeringService featureService,
@@ -50,7 +51,7 @@ public class BettingStrategyComparisonService : IBettingStrategyComparisonServic
         foreach (var method in methods)
         {
             Console.WriteLine($"🔄 Testing {method}...");
-            
+
             var methodResults = await BacktestOptimizationMethodAsync(startRound, endRound, method);
             comparisonReport.MethodResults[method] = methodResults;
 
@@ -60,10 +61,14 @@ public class BettingStrategyComparisonService : IBettingStrategyComparisonServic
         }
 
         // Rank methods by different criteria
-        comparisonReport.BestByROI = comparisonReport.MethodResults.OrderByDescending(kv => kv.Value.OverallROI).First().Key;
-        comparisonReport.BestBySharpe = comparisonReport.MethodResults.OrderByDescending(kv => kv.Value.SharpeRatio).First().Key;
-        comparisonReport.BestByConsistency = comparisonReport.MethodResults.OrderByDescending(kv => kv.Value.WinningDaysPercentage).First().Key;
-        comparisonReport.BestByProfitFactor = comparisonReport.MethodResults.OrderByDescending(kv => kv.Value.ProfitFactor).First().Key;
+        comparisonReport.BestByROI =
+            comparisonReport.MethodResults.OrderByDescending(kv => kv.Value.OverallROI).First().Key;
+        comparisonReport.BestBySharpe =
+            comparisonReport.MethodResults.OrderByDescending(kv => kv.Value.SharpeRatio).First().Key;
+        comparisonReport.BestByConsistency = comparisonReport.MethodResults
+            .OrderByDescending(kv => kv.Value.WinningDaysPercentage).First().Key;
+        comparisonReport.BestByProfitFactor =
+            comparisonReport.MethodResults.OrderByDescending(kv => kv.Value.ProfitFactor).First().Key;
 
         DisplayComparisonReport(comparisonReport);
         SaveComparisonReport(comparisonReport);
@@ -71,18 +76,19 @@ public class BettingStrategyComparisonService : IBettingStrategyComparisonServic
         return comparisonReport;
     }
 
-    private async Task<OptimizationMethodResults> BacktestOptimizationMethodAsync(int startRound, int endRound, BetOptimizationMethod method)
+    private async Task<OptimizationMethodResults> BacktestOptimizationMethodAsync(int startRound, int endRound,
+        BetOptimizationMethod method)
     {
         var dailyResults = new List<DailyMethodResult>();
 
         double totalWinnings;
-        for (int roundId = startRound; roundId <= endRound; roundId++)
+        for (var roundId = startRound; roundId <= endRound; roundId++)
         {
             var features = await _featureService.CreateFeaturesForRoundAsync(roundId);
             if (!features.Any()) continue;
 
             var predictions = await _mlService.PredictAsync(features);
-            var betSeries = _bettingService.GenerateBetSeries(predictions, method);
+            var betSeries = _bettingService.GenerateBetSeriesParallel(predictions, method);
 
             var actualWinners = await _context.RoundResults
                 .Where(rr => rr.RoundId == roundId && rr.IsWinner)
@@ -164,7 +170,8 @@ public class BettingStrategyComparisonService : IBettingStrategyComparisonServic
             {
                 Method = kv.Key,
                 Results = kv.Value,
-                Score = (kv.Value.SharpeRatio * 0.4) + (kv.Value.OverallROI * 100 * 0.3) + (kv.Value.WinningDaysPercentage * 0.3)
+                Score = kv.Value.SharpeRatio * 0.4 + kv.Value.OverallROI * 100 * 0.3 +
+                        kv.Value.WinningDaysPercentage * 0.3
             })
             .OrderByDescending(x => x.Score)
             .ToList();
@@ -190,10 +197,10 @@ public class BettingStrategyComparisonService : IBettingStrategyComparisonServic
     {
         Directory.CreateDirectory("Reports");
         var fileName = Path.Combine("Reports", $"strategy_comparison_{DateTime.UtcNow:yyyyMMdd_HHmmss}.json");
-        
-        var json = System.Text.Json.JsonSerializer.Serialize(report, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+
+        var json = JsonSerializer.Serialize(report, new JsonSerializerOptions { WriteIndented = true });
         File.WriteAllText(fileName, json);
-        
+
         Console.WriteLine($"\n📄 Strategy comparison saved to {fileName}");
     }
 
@@ -212,7 +219,7 @@ public class BettingStrategyComparisonService : IBettingStrategyComparisonServic
         var avgReturn = returns.Average();
         var downsideReturns = returns.Where(r => r < 0).ToList();
         if (!downsideReturns.Any()) return avgReturn > 0 ? 999 : 0;
-        
+
         var downsideDeviation = Math.Sqrt(downsideReturns.Sum(r => Math.Pow(r, 2)) / downsideReturns.Count);
         return downsideDeviation > 0 ? avgReturn / downsideDeviation : 0;
     }
@@ -245,7 +252,7 @@ public class BettingStrategyComparisonService : IBettingStrategyComparisonServic
     {
         var sorted = values.OrderBy(v => v).ToList();
         if (!sorted.Any()) return 0;
-        int middle = sorted.Count / 2;
+        var middle = sorted.Count / 2;
         return sorted.Count % 2 == 0 ? (sorted[middle - 1] + sorted[middle]) / 2 : sorted[middle];
     }
 }

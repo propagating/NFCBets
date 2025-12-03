@@ -7,8 +7,8 @@
     </PropertyGroup>
 
     <ItemGroup>
-      <ProjectReference Include="..\NFCBets.EF\NFCBets.EF.csproj" />
-      <ProjectReference Include="..\NFCBets.Utilities\NFCBets.Utilities.csproj" />
+        <ProjectReference Include="..\NFCBets.EF\NFCBets.EF.csproj"/>
+        <ProjectReference Include="..\NFCBets.Utilities\NFCBets.Utilities.csproj"/>
     </ItemGroup>
 
 </Project>

@@ -9,8 +9,8 @@ public class FeatureEngineeringService : IFeatureEngineeringService
 {
     private readonly NfcbetsContext _context;
     private readonly IFoodAdjustmentService _foodAdjustmentService;
-    private Dictionary<int, Pirate>? _pirateCache;
     private Dictionary<int, List<RoundResult>>? _allHistoricalResultsCache;
+    private Dictionary<int, Pirate>? _pirateCache;
 
     public FeatureEngineeringService(NfcbetsContext context, IFoodAdjustmentService foodAdjustmentService)
     {
@@ -18,83 +18,83 @@ public class FeatureEngineeringService : IFeatureEngineeringService
         _foodAdjustmentService = foodAdjustmentService;
     }
 
-/// OPTIMIZED: CreateFeaturesForRoundAsync with caching
-public async Task<List<PirateFeatureRecord>> CreateFeaturesForRoundAsync(int roundId)
-{
-    var features = new List<PirateFeatureRecord>();
-
-    // OPTIMIZATION 1: Single query for all placements
-    var placements = await _context.RoundPiratePlacements
-        .Where(rpp => rpp.RoundId == roundId)
-        .ToListAsync();
-
-    if (!placements.Any()) return features;
-
-    // OPTIMIZATION 2: Get all pirate IDs involved
-    var pirateIds = placements
-        .Where(p => p.PirateId.HasValue)
-        .Select(p => p.PirateId!.Value)
-        .Distinct()
-        .ToList();
-
-    // OPTIMIZATION 3: Batch load pirates
-    _pirateCache = await _context.Pirates
-        .Where(p => pirateIds.Contains(p.PirateId))
-        .ToDictionaryAsync(p => p.PirateId, p => p);
-
-    // OPTIMIZATION 4: Batch load ALL historical results for these pirates
-    _allHistoricalResultsCache = (await _context.RoundResults
-        .Where(rr => pirateIds.Contains(rr.PirateId) && 
-                    rr.IsComplete && 
-                    rr.RoundId.HasValue &&
-                    rr.RoundId < roundId)
-        .ToListAsync())
-        .GroupBy(rr => rr.PirateId)
-        .ToDictionary(g => g.Key, g => g.ToList());
-
-    // OPTIMIZATION 5: Pre-calculate rivals for each arena
-    var rivalsByArena = placements
-        .Where(p => p.ArenaId.HasValue && p.PirateId.HasValue)
-        .GroupBy(p => p.ArenaId!.Value)
-        .ToDictionary(
-            g => g.Key,
-            g => g.Select(p => p.PirateId!.Value).ToList()
-        );
-
-    // Process each placement using cached data (no more DB queries)
-    foreach (var placement in placements)
+    /// OPTIMIZED: CreateFeaturesForRoundAsync with caching
+    public async Task<List<PirateFeatureRecord>> CreateFeaturesForRoundAsync(int roundId)
     {
-        if (!placement.PirateId.HasValue || !placement.ArenaId.HasValue) continue;
+        var features = new List<PirateFeatureRecord>();
 
-        var rivalsInArena = rivalsByArena.GetValueOrDefault(placement.ArenaId.Value, new List<int>())
-            .Where(id => id != placement.PirateId.Value)
+        // OPTIMIZATION 1: Single query for all placements
+        var placements = await _context.RoundPiratePlacements
+            .Where(rpp => rpp.RoundId == roundId)
+            .ToListAsync();
+
+        if (!placements.Any()) return features;
+
+        // OPTIMIZATION 2: Get all pirate IDs involved
+        var pirateIds = placements
+            .Where(p => p.PirateId.HasValue)
+            .Select(p => p.PirateId!.Value)
+            .Distinct()
             .ToList();
 
-        var feature = BuildFeatureRecordOptimized(
-            placement.PirateId.Value,
-            placement.ArenaId.Value,
-            roundId,
-            placement,
-            rivalsInArena,
-            null // No outcome for prediction
-        );
+        // OPTIMIZATION 3: Batch load pirates
+        _pirateCache = await _context.Pirates
+            .Where(p => pirateIds.Contains(p.PirateId))
+            .ToDictionaryAsync(p => p.PirateId, p => p);
 
-        if (feature != null)
-            features.Add(feature);
+        // OPTIMIZATION 4: Batch load ALL historical results for these pirates
+        _allHistoricalResultsCache = (await _context.RoundResults
+                .Where(rr => pirateIds.Contains(rr.PirateId) &&
+                             rr.IsComplete &&
+                             rr.RoundId.HasValue &&
+                             rr.RoundId < roundId)
+                .ToListAsync())
+            .GroupBy(rr => rr.PirateId)
+            .ToDictionary(g => g.Key, g => g.ToList());
+
+        // OPTIMIZATION 5: Pre-calculate rivals for each arena
+        var rivalsByArena = placements
+            .Where(p => p.ArenaId.HasValue && p.PirateId.HasValue)
+            .GroupBy(p => p.ArenaId!.Value)
+            .ToDictionary(
+                g => g.Key,
+                g => g.Select(p => p.PirateId!.Value).ToList()
+            );
+
+        // Process each placement using cached data (no more DB queries)
+        foreach (var placement in placements)
+        {
+            if (!placement.PirateId.HasValue || !placement.ArenaId.HasValue) continue;
+
+            var rivalsInArena = rivalsByArena.GetValueOrDefault(placement.ArenaId.Value, new List<int>())
+                .Where(id => id != placement.PirateId.Value)
+                .ToList();
+
+            var feature = BuildFeatureRecordOptimized(
+                placement.PirateId.Value,
+                placement.ArenaId.Value,
+                roundId,
+                placement,
+                rivalsInArena,
+                null // No outcome for prediction
+            );
+
+            if (feature != null)
+                features.Add(feature);
+        }
+
+        // Clear caches
+        _pirateCache = null;
+        _allHistoricalResultsCache = null;
+
+        return features;
     }
 
-    // Clear caches
-    _pirateCache = null;
-    _allHistoricalResultsCache = null;
-
-    return features;
-}
-
-      /// OPTIMIZED: CreateTrainingDataAsync
+    /// OPTIMIZED: CreateTrainingDataAsync
     public async Task<List<PirateFeatureRecord>> CreateTrainingDataAsync(int maxRounds = 4000)
     {
         Console.WriteLine("📊 Creating training data with optimized batch loading...");
-        
+
         var features = new List<PirateFeatureRecord>();
 
         // Get all completed rounds
@@ -114,18 +114,18 @@ public async Task<List<PirateFeatureRecord>> CreateFeaturesForRoundAsync(int rou
 
         // OPTIMIZATION 2: Load ALL historical results once
         _allHistoricalResultsCache = (await _context.RoundResults
-            .Where(rr => rr.IsComplete && rr.RoundId.HasValue)
-            .ToListAsync())
+                .Where(rr => rr.IsComplete && rr.RoundId.HasValue)
+                .ToListAsync())
             .GroupBy(rr => rr.PirateId)
             .ToDictionary(g => g.Key, g => g.ToList());
 
         // OPTIMIZATION 3: Process in batches
         const int batchSize = 200;
-        
-        for (int i = 0; i < completedRounds.Count; i += batchSize)
+
+        for (var i = 0; i < completedRounds.Count; i += batchSize)
         {
             var batchRounds = completedRounds.Skip(i).Take(batchSize).ToList();
-            
+
             // Load all placements and results for batch
             var batchPlacements = await _context.RoundPiratePlacements
                 .Where(rpp => batchRounds.Contains(rpp.RoundId!.Value))
@@ -152,8 +152,8 @@ public async Task<List<PirateFeatureRecord>> CreateFeaturesForRoundAsync(int rou
                     // Get rivals from batch data (no DB query)
                     var rivalsInArena = roundPlacements
                         .Where(rpp => rpp.ArenaId == placement.ArenaId &&
-                                     rpp.PirateId != placement.PirateId &&
-                                     rpp.PirateId.HasValue)
+                                      rpp.PirateId != placement.PirateId &&
+                                      rpp.PirateId.HasValue)
                         .Select(rpp => rpp.PirateId!.Value)
                         .ToList();
 
@@ -173,9 +173,8 @@ public async Task<List<PirateFeatureRecord>> CreateFeaturesForRoundAsync(int rou
             }
 
             if ((i + batchSize) % 1000 == 0)
-            {
-                Console.WriteLine($"   Processed {Math.Min(i + batchSize, completedRounds.Count)}/{completedRounds.Count} rounds...");
-            }
+                Console.WriteLine(
+                    $"   Processed {Math.Min(i + batchSize, completedRounds.Count)}/{completedRounds.Count} rounds...");
         }
 
         // Clear caches
@@ -226,7 +225,7 @@ public async Task<List<PirateFeatureRecord>> CreateFeaturesForRoundAsync(int rou
             IsWinner = isWinner
         };
     }
-   
+
     private PirateFeatureRecord? BuildFeatureRecordOptimized(
         int pirateId,
         int arenaId,
@@ -273,6 +272,7 @@ public async Task<List<PirateFeatureRecord>> CreateFeaturesForRoundAsync(int rou
             IsWinner = isWinner
         };
     }
+
     private async Task<(double WinRate, int TotalAppearances, double AverageOdds)> GetHistoricalStatsAsync(int pirateId,
         int arenaId, int beforeRoundId)
     {
@@ -291,8 +291,9 @@ public async Task<List<PirateFeatureRecord>> CreateFeaturesForRoundAsync(int rou
 
         return ((double)wins / results.Count, results.Count, avgOdds);
     }
-    
-    private (double WinRate, int TotalAppearances, double AverageOdds) GetHistoricalStatsOptimized(List<RoundResult> historicalResults)
+
+    private (double WinRate, int TotalAppearances, double AverageOdds) GetHistoricalStatsOptimized(
+        List<RoundResult> historicalResults)
     {
         if (!historicalResults.Any())
             return (0, 0, 0);
@@ -302,7 +303,7 @@ public async Task<List<PirateFeatureRecord>> CreateFeaturesForRoundAsync(int rou
 
         return ((double)wins / historicalResults.Count, historicalResults.Count, avgOdds);
     }
-    
+
     private double GetArenaWinRateOptimized(List<RoundResult> historicalResults, int arenaId)
     {
         var arenaResults = historicalResults.Where(r => r.ArenaId == arenaId).ToList();
@@ -310,7 +311,7 @@ public async Task<List<PirateFeatureRecord>> CreateFeaturesForRoundAsync(int rou
 
         return (double)arenaResults.Count(r => r.IsWinner) / arenaResults.Count;
     }
-    
+
     private double GetRecentFormOptimized(List<RoundResult> historicalResults, int lastN)
     {
         var recentResults = historicalResults
@@ -398,9 +399,7 @@ public async Task<List<PirateFeatureRecord>> CreateFeaturesForRoundAsync(int rou
 
         return (winRate, matchups.Count, avgRivalStrength);
     }
-    
 
-    /// OPTIMIZED: GetRivalPerformanceAsync - Now fully in-memory
     private (double WinRate, int TotalMatches, double AvgRivalStrength) GetRivalPerformanceOptimized(
         int pirateId,
         List<int> rivalIds,

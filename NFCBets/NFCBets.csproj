@@ -16,7 +16,7 @@
     </ItemGroup>
 
     <ItemGroup>
-        <ProjectReference Include="..\NFCBets.Evaluation\NFCBets.Evaluation.csproj" />
+        <ProjectReference Include="..\NFCBets.Evaluation\NFCBets.Evaluation.csproj"/>
         <ProjectReference Include="..\NFCBets.Services\NFCBets.Services.csproj"/>
     </ItemGroup>
 

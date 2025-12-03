@@ -7,7 +7,7 @@
     </PropertyGroup>
 
     <ItemGroup>
-      <ProjectReference Include="..\NFCBets.Services\NFCBets.Services.csproj" />
+        <ProjectReference Include="..\NFCBets.Services\NFCBets.Services.csproj"/>
     </ItemGroup>
 
 </Project>

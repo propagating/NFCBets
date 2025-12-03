@@ -22,400 +22,128 @@ public class MlModelService : IMlModelService
         _featureService = featureService;
         _context = context;
     }
-    
+
     public async Task TrainAndEvaluateCausallyInformedModelAsync()
-{
-    Console.WriteLine("🧬 Training and Evaluating Causally-Informed ML Model");
-    Console.WriteLine("═══════════════════════════════════════════════════\n");
-
-    // Step 1: Run comprehensive causal analysis
-    Console.WriteLine("🔬 Step 1: Comprehensive Causal Analysis...");
-    var causalService = new CausalInferenceService(_context);
-    var causalReport = await causalService.AnalyzeAllTreatmentEffectsAsync();
-
-    // Step 2: Feature selection based on causal significance
-    Console.WriteLine("\n📊 Step 2: Causal Feature Selection...");
-    var featureSelectionResult = SelectFeaturesBasedOnCausalAnalysis(causalReport);
-    
-    Console.WriteLine($"   Selected {featureSelectionResult.SelectedFeatures.Count} causally-validated features:");
-    foreach (var feature in featureSelectionResult.SelectedFeatures)
     {
-        var causalEffect = featureSelectionResult.FeatureEffects.GetValueOrDefault(feature, 0);
-        Console.WriteLine($"   ✅ {feature,-30} (causal effect: {causalEffect:+0.0%;-0.0%})");
-    }
+        Console.WriteLine("🧬 Training and Evaluating Causally-Informed ML Model");
+        Console.WriteLine("═══════════════════════════════════════════════════\n");
 
-    if (featureSelectionResult.ExcludedFeatures.Any())
-    {
-        Console.WriteLine($"\n   Excluded {featureSelectionResult.ExcludedFeatures.Count} non-causal features:");
-        foreach (var feature in featureSelectionResult.ExcludedFeatures)
+        // Step 1: Run comprehensive causal analysis
+        Console.WriteLine("🔬 Step 1: Comprehensive Causal Analysis...");
+        var causalService = new CausalInferenceService(_context);
+        var causalReport = await causalService.AnalyzeAllTreatmentEffectsAsync();
+
+        // Step 2: Feature selection based on causal significance
+        Console.WriteLine("\n📊 Step 2: Causal Feature Selection...");
+        var featureSelectionResult = SelectFeaturesBasedOnCausalAnalysis(causalReport);
+
+        Console.WriteLine($"   Selected {featureSelectionResult.SelectedFeatures.Count} causally-validated features:");
+        foreach (var feature in featureSelectionResult.SelectedFeatures)
         {
-            Console.WriteLine($"   ❌ {feature,-30} (not causally significant)");
-        }
-    }
-
-    // Step 3: Load and prepare training data
-    Console.WriteLine("\n📥 Step 3: Loading Training Data...");
-    var allData = await _featureService.CreateTrainingDataAsync(4000);
-    var validData = allData.Where(f => f.IsWinner.HasValue).ToList();
-
-    var minRound = validData.Min(f => f.RoundId);
-    var filteredData = validData.Where(f => f.RoundId > minRound + 100).ToList();
-
-    Console.WriteLine($"   Total: {validData.Count} records");
-    Console.WriteLine($"   After filtering: {filteredData.Count} records");
-
-    // Step 4: Data leakage check
-    Console.WriteLine("\n🔍 Step 4: Data Leakage Check...");
-    var evaluationService = new ModelEvaluationService();
-    var leakageReport = await evaluationService.CheckForDataLeakageAsync(filteredData, _context);
-
-    if (leakageReport.HasLeakage)
-    {
-        Console.WriteLine("❌ Critical data leakage detected!");
-        throw new InvalidOperationException("Data leakage in training data");
-    }
-
-    // Step 5: Cross-validation with causal features
-    Console.WriteLine("\n🔄 Step 5: Cross-Validation (Causal Features Only)...");
-    var crossValService = new CrossValidationService(_featureService);
-    
-    var timeSeriesCV = await crossValService.PerformTimeSeriesCrossValidationAsync(numFolds: 5);
-    var kFoldCV = await crossValService.PerformKFoldCrossValidationAsync(k: 5);
-
-    Console.WriteLine($"   Time-Series CV: AUC {timeSeriesCV.AverageAUC:F4} ± {timeSeriesCV.StdDevAUC:F4}");
-    Console.WriteLine($"   K-Fold CV:      AUC {kFoldCV.AverageAUC:F4} ± {kFoldCV.StdDevAUC:F4}");
-
-    // Step 6: Train final causal model
-    Console.WriteLine("\n🏋️ Step 6: Training Final Causal Model...");
-    var sortedData = filteredData.OrderBy(f => f.RoundId).ToList();
-    var splitIndex = (int)(sortedData.Count * 0.8);
-
-    var trainData = sortedData.Take(splitIndex).ToList();
-    var testData = sortedData.Skip(splitIndex).ToList();
-
-    var mlTrainData = ConvertToMlFormat(trainData);
-    var dataView = _mlContext.Data.LoadFromEnumerable(mlTrainData);
-
-    // Build pipeline with only causal features
-    var pipeline = _mlContext.Transforms.Concatenate("Features", featureSelectionResult.SelectedFeatures.ToArray())
-        .Append(_mlContext.Transforms.NormalizeMinMax("Features"))
-        .Append(_mlContext.BinaryClassification.Trainers.LightGbm(
-            labelColumnName: nameof(MlPirateFeature.Won),
-            featureColumnName: "Features",
-            numberOfLeaves: 20,
-            minimumExampleCountPerLeaf: 50,
-            learningRate: 0.05,
-            numberOfIterations: 50));
-
-    var startTime = DateTime.Now;
-    _model = pipeline.Fit(dataView);
-    var trainingTime = DateTime.Now - startTime;
-
-    Console.WriteLine($"   ✅ Training completed in {trainingTime.TotalSeconds:F1}s");
-
-    // Step 7: Evaluate causal model
-    Console.WriteLine("\n📈 Step 7: Model Evaluation...");
-    var evaluationReport = await evaluationService.EvaluateModelAsync(_model, testData);
-
-    // Step 8: Compare causal vs standard model
-    Console.WriteLine("\n⚖️ Step 8: Causal vs Standard Model Comparison...");
-    var standardModel = await TrainStandardModelForComparison(trainData);
-    var standardEval = await evaluationService.EvaluateModelAsync(standardModel, testData);
-
-    Console.WriteLine($"   Causal Model:");
-    Console.WriteLine($"      AUC:      {evaluationReport.AUC:F4}");
-    Console.WriteLine($"      Accuracy: {evaluationReport.Accuracy:P2}");
-    Console.WriteLine($"   Standard Model (All Features):");
-    Console.WriteLine($"      AUC:      {standardEval.AUC:F4}");
-    Console.WriteLine($"      Accuracy: {standardEval.Accuracy:P2}");
-
-    var aucDifference = evaluationReport.AUC - standardEval.AUC;
-    Console.WriteLine($"   Difference: {aucDifference:+0.0000;-0.0000}");
-
-    if (aucDifference > -0.01)
-    {
-        Console.WriteLine($"   ✅ Causal model performs similarly with fewer features (better generalization)");
-    }
-    else if (aucDifference < -0.03)
-    {
-        Console.WriteLine($"   ⚠️ Causal model underperforms - some excluded features may be important");
-    }
-
-    // Step 9: Generate key findings and recommendations
-    Console.WriteLine("\n💡 Step 9: Generating Insights...");
-    GenerateCausalInsights(causalReport, evaluationReport, featureSelectionResult);
-
-    // Save comprehensive report
-    SaveComprehensiveCausalReport(causalReport, evaluationReport, featureSelectionResult, timeSeriesCV, kFoldCV);
-
-    Console.WriteLine("\n✅ Causally-informed model training complete");
-}
-
-private FeatureSelectionResult SelectFeaturesBasedOnCausalAnalysis(ComprehensiveCausalReport causalReport)
-{
-    var result = new FeatureSelectionResult();
-    var featureEffects = new Dictionary<string, double>();
-
-    // Map causal effects to ML features
-    if (causalReport.FoodAdjustmentEffect.IsSignificant)
-    {
-        result.SelectedFeatures.Add(nameof(MlPirateFeature.FoodAdjustment));
-        featureEffects[nameof(MlPirateFeature.FoodAdjustment)] = causalReport.FoodAdjustmentEffect.AverageTreatmentEffect;
-    }
-    else
-    {
-        result.ExcludedFeatures.Add(nameof(MlPirateFeature.FoodAdjustment));
-    }
-
-    if (causalReport.SeatPositionEffect.IsSignificant)
-    {
-        result.SelectedFeatures.Add(nameof(MlPirateFeature.Position));
-        featureEffects[nameof(MlPirateFeature.Position)] = causalReport.SeatPositionEffect.AverageTreatmentEffect;
-    }
-    else
-    {
-        result.ExcludedFeatures.Add(nameof(MlPirateFeature.Position));
-    }
-
-    if (causalReport.RivalStrengthEffect.IsSignificant)
-    {
-        result.SelectedFeatures.Add(nameof(MlPirateFeature.AvgRivalStrength));
-        result.SelectedFeatures.Add(nameof(MlPirateFeature.WinRateVsCurrentRivals));
-        featureEffects[nameof(MlPirateFeature.AvgRivalStrength)] = causalReport.RivalStrengthEffect.AverageTreatmentEffect;
-    }
-    else
-    {
-        result.ExcludedFeatures.Add(nameof(MlPirateFeature.AvgRivalStrength));
-        result.ExcludedFeatures.Add(nameof(MlPirateFeature.WinRateVsCurrentRivals));
-    }
-
-    if (causalReport.OddsEffect.IsSignificant)
-    {
-        result.SelectedFeatures.Add(nameof(MlPirateFeature.CurrentOdds));
-        featureEffects[nameof(MlPirateFeature.CurrentOdds)] = causalReport.OddsEffect.AverageTreatmentEffect;
-    }
-    else
-    {
-        result.ExcludedFeatures.Add(nameof(MlPirateFeature.CurrentOdds));
-    }
-
-    // Always include proven predictors (may not be causal but are predictive)
-    result.SelectedFeatures.Add(nameof(MlPirateFeature.HistoricalWinRate));
-    result.SelectedFeatures.Add(nameof(MlPirateFeature.ArenaWinRate));
-    result.SelectedFeatures.Add(nameof(MlPirateFeature.RecentWinRate));
-
-    // Include pirate attributes if they have effects
-    if (Math.Abs(featureEffects.Values.DefaultIfEmpty(0).Average()) > 0.01)
-    {
-        result.SelectedFeatures.Add(nameof(MlPirateFeature.Strength));
-        result.SelectedFeatures.Add(nameof(MlPirateFeature.Weight));
-    }
-
-    result.FeatureEffects = featureEffects;
-
-    return result;
-}
-
-private async Task<ITransformer> TrainStandardModelForComparison(List<PirateFeatureRecord> trainData)
-{
-    var mlData = ConvertToMlFormat(trainData);
-    var dataView = _mlContext.Data.LoadFromEnumerable(mlData);
-
-    var pipeline = _mlContext.Transforms.Concatenate("Features",
-            nameof(MlPirateFeature.Position),
-            nameof(MlPirateFeature.CurrentOdds),
-            nameof(MlPirateFeature.FoodAdjustment),
-            nameof(MlPirateFeature.Strength),
-            nameof(MlPirateFeature.Weight),
-            nameof(MlPirateFeature.HistoricalWinRate),
-            nameof(MlPirateFeature.ArenaWinRate),
-            nameof(MlPirateFeature.RecentWinRate),
-            nameof(MlPirateFeature.WinRateVsCurrentRivals),
-            nameof(MlPirateFeature.AvgRivalStrength))
-        .Append(_mlContext.Transforms.NormalizeMinMax("Features"))
-        .Append(_mlContext.BinaryClassification.Trainers.LightGbm(
-            labelColumnName: nameof(MlPirateFeature.Won),
-            featureColumnName: "Features",
-            numberOfLeaves: 20,
-            minimumExampleCountPerLeaf: 50,
-            learningRate: 0.05,
-            numberOfIterations: 50));
-
-    return pipeline.Fit(dataView);
-}
-
-private void GenerateCausalInsights(ComprehensiveCausalReport causalReport, ModelEvaluationReport evalReport, FeatureSelectionResult featureSelection)
-{
-    var findings = new List<string>();
-    var recommendations = new List<string>();
-
-    // Food adjustment insights
-    if (causalReport.FoodAdjustmentEffect.IsSignificant && causalReport.FoodAdjustmentEffect.AverageTreatmentEffect > 0.05)
-    {
-        findings.Add($"Food adjustment has strong positive causal effect (+{causalReport.FoodAdjustmentEffect.AverageTreatmentEffect:P1})");
-        recommendations.Add("Prioritize pirates with positive food adjustments in betting strategies");
-    }
-    else if (!causalReport.FoodAdjustmentEffect.IsSignificant)
-    {
-        findings.Add("Food adjustment shows correlation but weak causal evidence");
-        recommendations.Add("Use food adjustment cautiously - may be confounded with other factors");
-    }
-
-    // Position insights
-    if (causalReport.SeatPositionEffect.IsSignificant)
-    {
-        findings.Add($"Seat position has causal impact ({causalReport.SeatPositionEffect.AverageTreatmentEffect:+P1})");
-        
-        if (causalReport.SeatPositionEffect.PositionEffects != null)
-        {
-            var bestPosition = causalReport.SeatPositionEffect.PositionEffects.OrderByDescending(kv => kv.Value).First();
-            recommendations.Add($"Position {bestPosition.Key} shows {bestPosition.Value:+P1} advantage - weight heavily in model");
-        }
-    }
-
-    // Rival strength insights
-    if (causalReport.RivalStrengthEffect.IsSignificant && causalReport.RivalStrengthEffect.AverageTreatmentEffect < -0.03)
-    {
-        findings.Add($"Strong rivals significantly reduce win probability ({causalReport.RivalStrengthEffect.AverageTreatmentEffect:P1})");
-        recommendations.Add("Head-to-head matchups are critical - include rival analysis in all strategies");
-    }
-
-    // Odds insights
-    if (causalReport.OddsEffect.IsSignificant)
-    {
-        findings.Add($"Favorite status has causal effect ({causalReport.OddsEffect.AverageTreatmentEffect:+P1})");
-        
-        if (causalReport.OddsEffect.DoseResponse != null)
-        {
-            var doseEffects = causalReport.OddsEffect.DoseResponse.OrderBy(kv => kv.Key).ToList();
-            var efficiency = doseEffects.FirstOrDefault(kv => kv.Value / (1.0 / kv.Key) > 1.2);
-            
-            if (efficiency.Key > 0)
-            {
-                recommendations.Add($"Pirates at {efficiency.Key}:1 odds show best value (win rate: {efficiency.Value:P1})");
-            }
-        }
-    }
-
-    // Interaction insights
-    if (causalReport.InteractionEffects.Any())
-    {
-        var synergies = causalReport.InteractionEffects.Where(ie => ie.Value.IsSynergistic).ToList();
-        var antagonisms = causalReport.InteractionEffects.Where(ie => ie.Value.IsAntagonistic).ToList();
-
-        if (synergies.Any())
-        {
-            findings.Add($"Found {synergies.Count} synergistic effect combinations");
-            foreach (var (key, effect) in synergies)
-            {
-                recommendations.Add($"Combine {effect.Name} for {effect.InteractionStrength:+P1} bonus");
-            }
+            var causalEffect = featureSelectionResult.FeatureEffects.GetValueOrDefault(feature, 0);
+            Console.WriteLine($"   ✅ {feature,-30} (causal effect: {causalEffect:+0.0%;-0.0%})");
         }
 
-        if (antagonisms.Any())
+        if (featureSelectionResult.ExcludedFeatures.Any())
         {
-            findings.Add($"Found {antagonisms.Count} antagonistic effect combinations");
-            foreach (var (key, effect) in antagonisms)
-            {
-                recommendations.Add($"Avoid combining {effect.Name} (reduces effect by {-effect.InteractionStrength:P1})");
-            }
+            Console.WriteLine($"\n   Excluded {featureSelectionResult.ExcludedFeatures.Count} non-causal features:");
+            foreach (var feature in featureSelectionResult.ExcludedFeatures)
+                Console.WriteLine($"   ❌ {feature,-30} (not causally significant)");
         }
-    }
 
-    // Model performance insights
-    if (evalReport.AUC > 0.75)
-    {
-        findings.Add($"Causal model achieves strong performance (AUC: {evalReport.AUC:F3})");
-    }
+        // Step 3: Load and prepare training data
+        Console.WriteLine("\n📥 Step 3: Loading Training Data...");
+        var allData = await _featureService.CreateTrainingDataAsync(4000);
+        var validData = allData.Where(f => f.IsWinner.HasValue).ToList();
 
-    if (evalReport.CalibrationMetrics.OverallCalibrationError < 0.10)
-    {
-        findings.Add("Model probabilities are well-calibrated for betting decisions");
-    }
-    else
-    {
-        recommendations.Add("Apply additional probability calibration before betting");
-    }
+        var minRound = validData.Min(f => f.RoundId);
+        var filteredData = validData.Where(f => f.RoundId > minRound + 100).ToList();
 
-    causalReport.KeyFindings = findings;
-    causalReport.Recommendations = recommendations;
+        Console.WriteLine($"   Total: {validData.Count} records");
+        Console.WriteLine($"   After filtering: {filteredData.Count} records");
 
-    Console.WriteLine("\n📋 KEY FINDINGS:");
-    foreach (var finding in findings)
-    {
-        Console.WriteLine($"   • {finding}");
-    }
+        // Step 4: Data leakage check
+        Console.WriteLine("\n🔍 Step 4: Data Leakage Check...");
+        var evaluationService = new ModelEvaluationService();
+        var leakageReport = await evaluationService.CheckForDataLeakageAsync(filteredData, _context);
 
-    Console.WriteLine("\n💡 RECOMMENDATIONS:");
-    foreach (var rec in recommendations)
-    {
-        Console.WriteLine($"   → {rec}");
-    }
-}
-
-private void SaveComprehensiveCausalReport(
-    ComprehensiveCausalReport causalReport,
-    ModelEvaluationReport evalReport,
-    FeatureSelectionResult featureSelection,
-    CrossValidationReport timeSeriesCV,
-    CrossValidationReport kFoldCV)
-{
-    Directory.CreateDirectory("Reports");
-    
-    var comprehensiveReport = new
-    {
-        GeneratedAt = DateTime.UtcNow,
-        CausalAnalysis = causalReport,
-        FeatureSelection = featureSelection,
-        CrossValidation = new
+        if (leakageReport.HasLeakage)
         {
-            TimeSeries = timeSeriesCV,
-            KFold = kFoldCV
-        },
-        ModelEvaluation = new
-        {
-            evalReport.Accuracy,
-            evalReport.AUC,
-            evalReport.F1Score,
-            evalReport.LogLoss,
-            evalReport.CalibrationMetrics
-        },
-        Summary = new
-        {
-            TotalFeaturesAnalyzed = featureSelection.SelectedFeatures.Count + featureSelection.ExcludedFeatures.Count,
-            CausallySignificantFeatures = featureSelection.SelectedFeatures.Count,
-            StrongestCausalEffect = causalReport.FoodAdjustmentEffect.AverageTreatmentEffect,
-            ModelStability = timeSeriesCV.StdDevAUC < 0.02 ? "Stable" : "Unstable",
-            RecommendedOptimization = DetermineRecommendedOptimization(causalReport)
+            Console.WriteLine("❌ Critical data leakage detected!");
+            throw new InvalidOperationException("Data leakage in training data");
         }
-    };
 
-    var fileName = Path.Combine("Reports", $"causal_model_report_{DateTime.UtcNow:yyyyMMdd_HHmmss}.json");
-    var json = System.Text.Json.JsonSerializer.Serialize(comprehensiveReport, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
-    File.WriteAllText(fileName, json);
+        // Step 5: Cross-validation with causal features
+        Console.WriteLine("\n🔄 Step 5: Cross-Validation (Causal Features Only)...");
+        var crossValService = new CrossValidationService(_featureService);
 
-    Console.WriteLine($"\n📄 Comprehensive causal report saved to {fileName}");
-}
+        var timeSeriesCV = await crossValService.PerformTimeSeriesCrossValidationAsync(5);
+        var kFoldCV = await crossValService.PerformKFoldCrossValidationAsync(5);
 
-private string DetermineRecommendedOptimization(ComprehensiveCausalReport causalReport)
-{
-    // Based on causal analysis, recommend optimization method
-    if (causalReport.FoodAdjustmentEffect.IsSignificant && 
-        causalReport.SeatPositionEffect.IsSignificant &&
-        causalReport.InteractionEffects.Any(ie => ie.Value.IsSynergistic))
-    {
-        return "ConsistencyWeighted - Multiple causal factors suggest focusing on reliable combinations";
+        Console.WriteLine($"   Time-Series CV: AUC {timeSeriesCV.AverageAUC:F4} ± {timeSeriesCV.StdDevAUC:F4}");
+        Console.WriteLine($"   K-Fold CV:      AUC {kFoldCV.AverageAUC:F4} ± {kFoldCV.StdDevAUC:F4}");
+
+        // Step 6: Train final causal model
+        Console.WriteLine("\n🏋️ Step 6: Training Final Causal Model...");
+        var sortedData = filteredData.OrderBy(f => f.RoundId).ToList();
+        var splitIndex = (int)(sortedData.Count * 0.8);
+
+        var trainData = sortedData.Take(splitIndex).ToList();
+        var testData = sortedData.Skip(splitIndex).ToList();
+
+        var mlTrainData = ConvertToMlFormat(trainData);
+        var dataView = _mlContext.Data.LoadFromEnumerable(mlTrainData);
+
+        // Build pipeline with only causal features
+        var pipeline = _mlContext.Transforms.Concatenate("Features", featureSelectionResult.SelectedFeatures.ToArray())
+            .Append(_mlContext.Transforms.NormalizeMinMax("Features"))
+            .Append(_mlContext.BinaryClassification.Trainers.LightGbm(
+                nameof(MlPirateFeature.Won),
+                "Features",
+                numberOfLeaves: 20,
+                minimumExampleCountPerLeaf: 50,
+                learningRate: 0.05,
+                numberOfIterations: 50));
+
+        var startTime = DateTime.Now;
+        _model = pipeline.Fit(dataView);
+        var trainingTime = DateTime.Now - startTime;
+
+        Console.WriteLine($"   ✅ Training completed in {trainingTime.TotalSeconds:F1}s");
+
+        // Step 7: Evaluate causal model
+        Console.WriteLine("\n📈 Step 7: Model Evaluation...");
+        var evaluationReport = await evaluationService.EvaluateModelAsync(_model, testData);
+
+        // Step 8: Compare causal vs standard model
+        Console.WriteLine("\n⚖️ Step 8: Causal vs Standard Model Comparison...");
+        var standardModel = await TrainStandardModelForComparison(trainData);
+        var standardEval = await evaluationService.EvaluateModelAsync(standardModel, testData);
+
+        Console.WriteLine("   Causal Model:");
+        Console.WriteLine($"      AUC:      {evaluationReport.AUC:F4}");
+        Console.WriteLine($"      Accuracy: {evaluationReport.Accuracy:P2}");
+        Console.WriteLine("   Standard Model (All Features):");
+        Console.WriteLine($"      AUC:      {standardEval.AUC:F4}");
+        Console.WriteLine($"      Accuracy: {standardEval.Accuracy:P2}");
+
+        var aucDifference = evaluationReport.AUC - standardEval.AUC;
+        Console.WriteLine($"   Difference: {aucDifference:+0.0000;-0.0000}");
+
+        if (aucDifference > -0.01)
+            Console.WriteLine("   ✅ Causal model performs similarly with fewer features (better generalization)");
+        else if (aucDifference < -0.03)
+            Console.WriteLine("   ⚠️ Causal model underperforms - some excluded features may be important");
+
+        // Step 9: Generate key findings and recommendations
+        Console.WriteLine("\n💡 Step 9: Generating Insights...");
+        GenerateCausalInsights(causalReport, evaluationReport, featureSelectionResult);
+
+        // Save comprehensive report
+        SaveComprehensiveCausalReport(causalReport, evaluationReport, featureSelectionResult, timeSeriesCV, kFoldCV);
+
+        Console.WriteLine("\n✅ Causally-informed model training complete");
     }
-
-    if (causalReport.OddsEffect.IsSignificant && 
-        Math.Abs(causalReport.OddsEffect.AverageTreatmentEffect) > 0.1)
-    {
-        return "Kelly - Strong odds effects suggest Kelly criterion for bet sizing";
-    }
-
-    return "ConsistencyWeighted - Default safe choice";
-}
-
 
 
     public async Task TrainAndEvaluateModelAsync()
@@ -440,43 +168,39 @@ private string DetermineRecommendedOptimization(ComprehensiveCausalReport causal
         Console.WriteLine("\n🔍 Step 1: Checking for data leakage...");
         var leakageReport = await evaluationService.CheckForDataLeakageAsync(filteredData, _context);
 
-        if (leakageReport.HasLeakage)
-        {
-            Console.WriteLine("❌ Data leakage detected!");
-        }
+        if (leakageReport.HasLeakage) Console.WriteLine("❌ Data leakage detected!");
 
         // Step 2: Cross-validation (both methods)
         Console.WriteLine("\n📊 Step 2: Cross-Validation...");
-        
+
         Console.WriteLine("   Running Time-Series Cross-Validation...");
-        var timeSeriesCV = await crossValService.PerformTimeSeriesCrossValidationAsync(numFolds: 5);
-        
+        var timeSeriesCV = await crossValService.PerformTimeSeriesCrossValidationAsync(5);
+
         Console.WriteLine("   Running K-Fold Cross-Validation...");
-        var kFoldCV = await crossValService.PerformKFoldCrossValidationAsync(k: 5);
+        var kFoldCV = await crossValService.PerformKFoldCrossValidationAsync(5);
 
         // Compare cross-validation methods
         Console.WriteLine("\n🔬 Cross-Validation Comparison:");
-        Console.WriteLine($"   Time-Series CV:");
+        Console.WriteLine("   Time-Series CV:");
         Console.WriteLine($"      Average AUC:      {timeSeriesCV.AverageAUC:F4} ± {timeSeriesCV.StdDevAUC:F4}");
-        Console.WriteLine($"      Average Accuracy: {timeSeriesCV.AverageAccuracy:P2} ± {timeSeriesCV.StdDevAccuracy:P2}");
-        Console.WriteLine($"   K-Fold CV:");
+        Console.WriteLine(
+            $"      Average Accuracy: {timeSeriesCV.AverageAccuracy:P2} ± {timeSeriesCV.StdDevAccuracy:P2}");
+        Console.WriteLine("   K-Fold CV:");
         Console.WriteLine($"      Average AUC:      {kFoldCV.AverageAUC:F4} ± {kFoldCV.StdDevAUC:F4}");
         Console.WriteLine($"      Average Accuracy: {kFoldCV.AverageAccuracy:P2} ± {kFoldCV.StdDevAccuracy:P2}");
-        
+
         var aucDifference = Math.Abs(timeSeriesCV.AverageAUC - kFoldCV.AverageAUC);
         Console.WriteLine($"   Difference in AUC: {aucDifference:F4}");
-        
+
         if (aucDifference < 0.02)
         {
-            Console.WriteLine($"   ✅ Both methods show consistent results - model is stable");
+            Console.WriteLine("   ✅ Both methods show consistent results - model is stable");
         }
         else
         {
-            Console.WriteLine($"   ⚠️ Methods differ - may indicate temporal drift or overfitting");
+            Console.WriteLine("   ⚠️ Methods differ - may indicate temporal drift or overfitting");
             if (timeSeriesCV.AverageAUC < kFoldCV.AverageAUC)
-            {
-                Console.WriteLine($"   📌 Time-Series CV lower suggests model may not generalize well to future data");
-            }
+                Console.WriteLine("   📌 Time-Series CV lower suggests model may not generalize well to future data");
         }
 
         // Use the more conservative estimate
@@ -491,8 +215,10 @@ private string DetermineRecommendedOptimization(ComprehensiveCausalReport causal
         var trainData = sortedData.Take(splitIndex).ToList();
         var testData = sortedData.Skip(splitIndex).ToList();
 
-        Console.WriteLine($"   Training: {trainData.Count} records (rounds {trainData.Min(f => f.RoundId)}-{trainData.Max(f => f.RoundId)})");
-        Console.WriteLine($"   Testing:  {testData.Count} records (rounds {testData.Min(f => f.RoundId)}-{testData.Max(f => f.RoundId)})");
+        Console.WriteLine(
+            $"   Training: {trainData.Count} records (rounds {trainData.Min(f => f.RoundId)}-{trainData.Max(f => f.RoundId)})");
+        Console.WriteLine(
+            $"   Testing:  {testData.Count} records (rounds {testData.Min(f => f.RoundId)}-{testData.Max(f => f.RoundId)})");
 
         var mlTrainData = ConvertToMlFormat(trainData);
         var dataView = _mlContext.Data.LoadFromEnumerable(mlTrainData);
@@ -508,8 +234,8 @@ private string DetermineRecommendedOptimization(ComprehensiveCausalReport causal
                 nameof(MlPirateFeature.WinRateVsCurrentRivals))
             .Append(_mlContext.Transforms.NormalizeMinMax("Features"))
             .Append(_mlContext.BinaryClassification.Trainers.LightGbm(
-                labelColumnName: nameof(MlPirateFeature.Won),
-                featureColumnName: "Features",
+                nameof(MlPirateFeature.Won),
+                "Features",
                 numberOfLeaves: 20,
                 minimumExampleCountPerLeaf: 50,
                 learningRate: 0.05,
@@ -527,84 +253,52 @@ private string DetermineRecommendedOptimization(ComprehensiveCausalReport causal
 
         // Step 5: Model stability analysis
         Console.WriteLine("\n🎯 Step 5: Model Stability Analysis");
-        Console.WriteLine($"   Cross-Val Performance (Time-Series):");
+        Console.WriteLine("   Cross-Val Performance (Time-Series):");
         Console.WriteLine($"      AUC:      {timeSeriesCV.AverageAUC:F4} ± {timeSeriesCV.StdDevAUC:F4}");
         Console.WriteLine($"      Accuracy: {timeSeriesCV.AverageAccuracy:P2} ± {timeSeriesCV.StdDevAccuracy:P2}");
-        
-        Console.WriteLine($"   Cross-Val Performance (K-Fold):");
+
+        Console.WriteLine("   Cross-Val Performance (K-Fold):");
         Console.WriteLine($"      AUC:      {kFoldCV.AverageAUC:F4} ± {kFoldCV.StdDevAUC:F4}");
         Console.WriteLine($"      Accuracy: {kFoldCV.AverageAccuracy:P2} ± {kFoldCV.StdDevAccuracy:P2}");
-        
-        Console.WriteLine($"   Final Model (Holdout Test Set):");
+
+        Console.WriteLine("   Final Model (Holdout Test Set):");
         Console.WriteLine($"      AUC:      {evaluationReport.AUC:F4}");
         Console.WriteLine($"      Accuracy: {evaluationReport.Accuracy:P2}");
-        
+
         // Check consistency
         var finalVsCVDiff = Math.Abs(evaluationReport.AUC - timeSeriesCV.AverageAUC);
         var kFoldVariance = kFoldCV.StdDevAUC;
         var timeSeriesVariance = timeSeriesCV.StdDevAUC;
-        
-        Console.WriteLine($"\n   Stability Assessment:");
+
+        Console.WriteLine("\n   Stability Assessment:");
         if (finalVsCVDiff < 0.03 && timeSeriesVariance < 0.02)
         {
-            Console.WriteLine($"   ✅ Model is stable and consistent");
+            Console.WriteLine("   ✅ Model is stable and consistent");
             Console.WriteLine($"      Final vs CV difference: {finalVsCVDiff:F4} (good)");
             Console.WriteLine($"      Time-Series variance: {timeSeriesVariance:F4} (low)");
         }
         else if (finalVsCVDiff > 0.05)
         {
-            Console.WriteLine($"   ⚠️ Model performance differs from CV");
+            Console.WriteLine("   ⚠️ Model performance differs from CV");
             Console.WriteLine($"      Final vs CV difference: {finalVsCVDiff:F4}");
-            Console.WriteLine($"      This may indicate overfitting to recent data");
+            Console.WriteLine("      This may indicate overfitting to recent data");
         }
         else if (timeSeriesVariance > 0.05 || kFoldVariance > 0.05)
         {
-            Console.WriteLine($"   ⚠️ Model shows high variance across folds");
+            Console.WriteLine("   ⚠️ Model shows high variance across folds");
             Console.WriteLine($"      Time-Series variance: {timeSeriesVariance:F4}");
             Console.WriteLine($"      K-Fold variance: {kFoldVariance:F4}");
-            Console.WriteLine($"      Performance may be unstable on new data");
+            Console.WriteLine("      Performance may be unstable on new data");
         }
         else
         {
-            Console.WriteLine($"   ✅ Model shows acceptable stability");
+            Console.WriteLine("   ✅ Model shows acceptable stability");
         }
 
         // Save cross-validation results
         SaveCrossValidationResults(timeSeriesCV, kFoldCV, evaluationReport);
 
         Console.WriteLine("\n✅ Model training and evaluation complete");
-    }
-
-    private void SaveCrossValidationResults(CrossValidationReport timeSeriesCV, CrossValidationReport kFoldCV, ModelEvaluationReport finalEval)
-    {
-        Directory.CreateDirectory("Reports");
-        
-        var report = new
-        {
-            GeneratedAt = DateTime.UtcNow,
-            TimeSeriesCrossValidation = timeSeriesCV,
-            KFoldCrossValidation = kFoldCV,
-            FinalModelEvaluation = new
-            {
-                finalEval.Accuracy,
-                finalEval.AUC,
-                finalEval.F1Score,
-                finalEval.LogLoss
-            },
-            StabilityMetrics = new
-            {
-                TimeSeriesVariance = timeSeriesCV.StdDevAUC,
-                KFoldVariance = kFoldCV.StdDevAUC,
-                FinalVsCVDifference = Math.Abs(finalEval.AUC - timeSeriesCV.AverageAUC),
-                IsStable = Math.Abs(finalEval.AUC - timeSeriesCV.AverageAUC) < 0.03 && timeSeriesCV.StdDevAUC < 0.02
-            }
-        };
-
-        var fileName = Path.Combine("Reports", $"cross_validation_{DateTime.UtcNow:yyyyMMdd_HHmmss}.json");
-        var json = JsonSerializer.Serialize(report, new JsonSerializerOptions { WriteIndented = true });
-        File.WriteAllText(fileName, json);
-
-        Console.WriteLine($"📄 Cross-validation report saved to {fileName}");
     }
 
     public async Task TrainModelAsync()
@@ -694,6 +388,294 @@ private string DetermineRecommendedOptimization(ComprehensiveCausalReport causal
     {
         _model = _mlContext.Model.Load(path, out _);
         Console.WriteLine($"📂 Model loaded from {path}");
+    }
+
+    private FeatureSelectionResult SelectFeaturesBasedOnCausalAnalysis(ComprehensiveCausalReport causalReport)
+    {
+        var result = new FeatureSelectionResult();
+        var featureEffects = new Dictionary<string, double>();
+
+        // Map causal effects to ML features
+        if (causalReport.FoodAdjustmentEffect.IsSignificant)
+        {
+            result.SelectedFeatures.Add(nameof(MlPirateFeature.FoodAdjustment));
+            featureEffects[nameof(MlPirateFeature.FoodAdjustment)] =
+                causalReport.FoodAdjustmentEffect.AverageTreatmentEffect;
+        }
+        else
+        {
+            result.ExcludedFeatures.Add(nameof(MlPirateFeature.FoodAdjustment));
+        }
+
+        if (causalReport.SeatPositionEffect.IsSignificant)
+        {
+            result.SelectedFeatures.Add(nameof(MlPirateFeature.Position));
+            featureEffects[nameof(MlPirateFeature.Position)] = causalReport.SeatPositionEffect.AverageTreatmentEffect;
+        }
+        else
+        {
+            result.ExcludedFeatures.Add(nameof(MlPirateFeature.Position));
+        }
+
+        if (causalReport.RivalStrengthEffect.IsSignificant)
+        {
+            result.SelectedFeatures.Add(nameof(MlPirateFeature.AvgRivalStrength));
+            result.SelectedFeatures.Add(nameof(MlPirateFeature.WinRateVsCurrentRivals));
+            featureEffects[nameof(MlPirateFeature.AvgRivalStrength)] =
+                causalReport.RivalStrengthEffect.AverageTreatmentEffect;
+        }
+        else
+        {
+            result.ExcludedFeatures.Add(nameof(MlPirateFeature.AvgRivalStrength));
+            result.ExcludedFeatures.Add(nameof(MlPirateFeature.WinRateVsCurrentRivals));
+        }
+
+        if (causalReport.OddsEffect.IsSignificant)
+        {
+            result.SelectedFeatures.Add(nameof(MlPirateFeature.CurrentOdds));
+            featureEffects[nameof(MlPirateFeature.CurrentOdds)] = causalReport.OddsEffect.AverageTreatmentEffect;
+        }
+        else
+        {
+            result.ExcludedFeatures.Add(nameof(MlPirateFeature.CurrentOdds));
+        }
+
+        // Always include proven predictors (may not be causal but are predictive)
+        result.SelectedFeatures.Add(nameof(MlPirateFeature.HistoricalWinRate));
+        result.SelectedFeatures.Add(nameof(MlPirateFeature.ArenaWinRate));
+        result.SelectedFeatures.Add(nameof(MlPirateFeature.RecentWinRate));
+
+        // Include pirate attributes if they have effects
+        if (Math.Abs(featureEffects.Values.DefaultIfEmpty(0).Average()) > 0.01)
+        {
+            result.SelectedFeatures.Add(nameof(MlPirateFeature.Strength));
+            result.SelectedFeatures.Add(nameof(MlPirateFeature.Weight));
+        }
+
+        result.FeatureEffects = featureEffects;
+
+        return result;
+    }
+
+    private async Task<ITransformer> TrainStandardModelForComparison(List<PirateFeatureRecord> trainData)
+    {
+        var mlData = ConvertToMlFormat(trainData);
+        var dataView = _mlContext.Data.LoadFromEnumerable(mlData);
+
+        var pipeline = _mlContext.Transforms.Concatenate("Features",
+                nameof(MlPirateFeature.Position),
+                nameof(MlPirateFeature.CurrentOdds),
+                nameof(MlPirateFeature.FoodAdjustment),
+                nameof(MlPirateFeature.Strength),
+                nameof(MlPirateFeature.Weight),
+                nameof(MlPirateFeature.HistoricalWinRate),
+                nameof(MlPirateFeature.ArenaWinRate),
+                nameof(MlPirateFeature.RecentWinRate),
+                nameof(MlPirateFeature.WinRateVsCurrentRivals),
+                nameof(MlPirateFeature.AvgRivalStrength))
+            .Append(_mlContext.Transforms.NormalizeMinMax("Features"))
+            .Append(_mlContext.BinaryClassification.Trainers.LightGbm(
+                nameof(MlPirateFeature.Won),
+                "Features",
+                numberOfLeaves: 20,
+                minimumExampleCountPerLeaf: 50,
+                learningRate: 0.05,
+                numberOfIterations: 50));
+
+        return pipeline.Fit(dataView);
+    }
+
+    private void GenerateCausalInsights(ComprehensiveCausalReport causalReport, ModelEvaluationReport evalReport,
+        FeatureSelectionResult featureSelection)
+    {
+        var findings = new List<string>();
+        var recommendations = new List<string>();
+
+        // Food adjustment insights
+        if (causalReport.FoodAdjustmentEffect.IsSignificant &&
+            causalReport.FoodAdjustmentEffect.AverageTreatmentEffect > 0.05)
+        {
+            findings.Add(
+                $"Food adjustment has strong positive causal effect (+{causalReport.FoodAdjustmentEffect.AverageTreatmentEffect:P1})");
+            recommendations.Add("Prioritize pirates with positive food adjustments in betting strategies");
+        }
+        else if (!causalReport.FoodAdjustmentEffect.IsSignificant)
+        {
+            findings.Add("Food adjustment shows correlation but weak causal evidence");
+            recommendations.Add("Use food adjustment cautiously - may be confounded with other factors");
+        }
+
+        // Position insights
+        if (causalReport.SeatPositionEffect.IsSignificant)
+        {
+            findings.Add(
+                $"Seat position has causal impact ({causalReport.SeatPositionEffect.AverageTreatmentEffect:+P1})");
+
+            if (causalReport.SeatPositionEffect.PositionEffects != null)
+            {
+                var bestPosition = causalReport.SeatPositionEffect.PositionEffects.OrderByDescending(kv => kv.Value)
+                    .First();
+                recommendations.Add(
+                    $"Position {bestPosition.Key} shows {bestPosition.Value:+P1} advantage - weight heavily in model");
+            }
+        }
+
+        // Rival strength insights
+        if (causalReport.RivalStrengthEffect.IsSignificant &&
+            causalReport.RivalStrengthEffect.AverageTreatmentEffect < -0.03)
+        {
+            findings.Add(
+                $"Strong rivals significantly reduce win probability ({causalReport.RivalStrengthEffect.AverageTreatmentEffect:P1})");
+            recommendations.Add("Head-to-head matchups are critical - include rival analysis in all strategies");
+        }
+
+        // Odds insights
+        if (causalReport.OddsEffect.IsSignificant)
+        {
+            findings.Add($"Favorite status has causal effect ({causalReport.OddsEffect.AverageTreatmentEffect:+P1})");
+
+            if (causalReport.OddsEffect.DoseResponse != null)
+            {
+                var doseEffects = causalReport.OddsEffect.DoseResponse.OrderBy(kv => kv.Key).ToList();
+                var efficiency = doseEffects.FirstOrDefault(kv => kv.Value / (1.0 / kv.Key) > 1.2);
+
+                if (efficiency.Key > 0)
+                    recommendations.Add(
+                        $"Pirates at {efficiency.Key}:1 odds show best value (win rate: {efficiency.Value:P1})");
+            }
+        }
+
+        // Interaction insights
+        if (causalReport.InteractionEffects.Any())
+        {
+            var synergies = causalReport.InteractionEffects.Where(ie => ie.Value.IsSynergistic).ToList();
+            var antagonisms = causalReport.InteractionEffects.Where(ie => ie.Value.IsAntagonistic).ToList();
+
+            if (synergies.Any())
+            {
+                findings.Add($"Found {synergies.Count} synergistic effect combinations");
+                foreach (var (key, effect) in synergies)
+                    recommendations.Add($"Combine {effect.Name} for {effect.InteractionStrength:+P1} bonus");
+            }
+
+            if (antagonisms.Any())
+            {
+                findings.Add($"Found {antagonisms.Count} antagonistic effect combinations");
+                foreach (var (key, effect) in antagonisms)
+                    recommendations.Add(
+                        $"Avoid combining {effect.Name} (reduces effect by {-effect.InteractionStrength:P1})");
+            }
+        }
+
+        // Model performance insights
+        if (evalReport.AUC > 0.75) findings.Add($"Causal model achieves strong performance (AUC: {evalReport.AUC:F3})");
+
+        if (evalReport.CalibrationMetrics.OverallCalibrationError < 0.10)
+            findings.Add("Model probabilities are well-calibrated for betting decisions");
+        else
+            recommendations.Add("Apply additional probability calibration before betting");
+
+        causalReport.KeyFindings = findings;
+        causalReport.Recommendations = recommendations;
+
+        Console.WriteLine("\n📋 KEY FINDINGS:");
+        foreach (var finding in findings) Console.WriteLine($"   • {finding}");
+
+        Console.WriteLine("\n💡 RECOMMENDATIONS:");
+        foreach (var rec in recommendations) Console.WriteLine($"   → {rec}");
+    }
+
+    private void SaveComprehensiveCausalReport(
+        ComprehensiveCausalReport causalReport,
+        ModelEvaluationReport evalReport,
+        FeatureSelectionResult featureSelection,
+        CrossValidationReport timeSeriesCV,
+        CrossValidationReport kFoldCV)
+    {
+        Directory.CreateDirectory("Reports");
+
+        var comprehensiveReport = new
+        {
+            GeneratedAt = DateTime.UtcNow,
+            CausalAnalysis = causalReport,
+            FeatureSelection = featureSelection,
+            CrossValidation = new
+            {
+                TimeSeries = timeSeriesCV,
+                KFold = kFoldCV
+            },
+            ModelEvaluation = new
+            {
+                evalReport.Accuracy,
+                evalReport.AUC,
+                evalReport.F1Score,
+                evalReport.LogLoss,
+                evalReport.CalibrationMetrics
+            },
+            Summary = new
+            {
+                TotalFeaturesAnalyzed =
+                    featureSelection.SelectedFeatures.Count + featureSelection.ExcludedFeatures.Count,
+                CausallySignificantFeatures = featureSelection.SelectedFeatures.Count,
+                StrongestCausalEffect = causalReport.FoodAdjustmentEffect.AverageTreatmentEffect,
+                ModelStability = timeSeriesCV.StdDevAUC < 0.02 ? "Stable" : "Unstable",
+                RecommendedOptimization = DetermineRecommendedOptimization(causalReport)
+            }
+        };
+
+        var fileName = Path.Combine("Reports", $"causal_model_report_{DateTime.UtcNow:yyyyMMdd_HHmmss}.json");
+        var json = JsonSerializer.Serialize(comprehensiveReport, new JsonSerializerOptions { WriteIndented = true });
+        File.WriteAllText(fileName, json);
+
+        Console.WriteLine($"\n📄 Comprehensive causal report saved to {fileName}");
+    }
+
+    private string DetermineRecommendedOptimization(ComprehensiveCausalReport causalReport)
+    {
+        // Based on causal analysis, recommend optimization method
+        if (causalReport.FoodAdjustmentEffect.IsSignificant &&
+            causalReport.SeatPositionEffect.IsSignificant &&
+            causalReport.InteractionEffects.Any(ie => ie.Value.IsSynergistic))
+            return "ConsistencyWeighted - Multiple causal factors suggest focusing on reliable combinations";
+
+        if (causalReport.OddsEffect.IsSignificant &&
+            Math.Abs(causalReport.OddsEffect.AverageTreatmentEffect) > 0.1)
+            return "Kelly - Strong odds effects suggest Kelly criterion for bet sizing";
+
+        return "ConsistencyWeighted - Default safe choice";
+    }
+
+    private void SaveCrossValidationResults(CrossValidationReport timeSeriesCV, CrossValidationReport kFoldCV,
+        ModelEvaluationReport finalEval)
+    {
+        Directory.CreateDirectory("Reports");
+
+        var report = new
+        {
+            GeneratedAt = DateTime.UtcNow,
+            TimeSeriesCrossValidation = timeSeriesCV,
+            KFoldCrossValidation = kFoldCV,
+            FinalModelEvaluation = new
+            {
+                finalEval.Accuracy,
+                finalEval.AUC,
+                finalEval.F1Score,
+                finalEval.LogLoss
+            },
+            StabilityMetrics = new
+            {
+                TimeSeriesVariance = timeSeriesCV.StdDevAUC,
+                KFoldVariance = kFoldCV.StdDevAUC,
+                FinalVsCVDifference = Math.Abs(finalEval.AUC - timeSeriesCV.AverageAUC),
+                IsStable = Math.Abs(finalEval.AUC - timeSeriesCV.AverageAUC) < 0.03 && timeSeriesCV.StdDevAUC < 0.02
+            }
+        };
+
+        var fileName = Path.Combine("Reports", $"cross_validation_{DateTime.UtcNow:yyyyMMdd_HHmmss}.json");
+        var json = JsonSerializer.Serialize(report, new JsonSerializerOptions { WriteIndented = true });
+        File.WriteAllText(fileName, json);
+
+        Console.WriteLine($"📄 Cross-validation report saved to {fileName}");
     }
 
     public void ClearPredictionCache()

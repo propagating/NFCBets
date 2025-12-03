@@ -117,7 +117,7 @@ public static class MathUtilities
 
         return maxDrawdown;
     }
-    
+
     public static double EuclideanDistance(double[] a, double[] b)
     {
         return Math.Sqrt(a.Zip(b, (x, y) => Math.Pow(x - y, 2)).Sum());
@@ -145,7 +145,7 @@ public static class MathUtilities
     {
         // Rough approximation using standard normal
         var absTStat = Math.Abs(tStat);
-            
+
         if (absTStat > 2.576) return 0.01;
         if (absTStat > 1.96) return 0.05;
         if (absTStat > 1.645) return 0.10;

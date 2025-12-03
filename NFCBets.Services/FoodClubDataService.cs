@@ -44,9 +44,10 @@ public class FoodClubDataService : IFoodClubDataService
     {
         var successfulRounds = new List<int>();
 
+        var completedRounds = await _context.RoundResults.Where(x => x.IsComplete).Select(x => x.RoundId).ToListAsync();
         for (var round = startRound; round <= endRound; round++)
         {
-            if (_context.RoundResults.Where(x => x.IsComplete).Select(x => x.RoundId).Contains(round))
+            if (completedRounds.Contains(round))
             {
                 Console.WriteLine($"Skipping round {round} as it's already been collected");
                 continue;
