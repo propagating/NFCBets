@@ -1,3 +1,5 @@
+using NFCBets.Utilities.Models;
+
 namespace NFCBets.Services.Models;
 
 public class DailyBettingResult

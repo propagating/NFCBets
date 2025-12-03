@@ -1,4 +1,5 @@
 using NFCBets.EF.Models;
+using NFCBets.Services.Enums;
 using NFCBets.Services.Interfaces;
 using NFCBets.Services.Models;
 using NFCBets.Utilities;
@@ -24,7 +25,7 @@ public class DailyBettingPipeline : IDailyBettingPipeline
         _context = context;
     }
 
-    public async Task<DailyBettingRecommendations> GenerateRecommendationsAsync(int roundId)
+    public async Task<DailyBettingRecommendations> GenerateRecommendationsAsync(int roundId, BetOptimizationMethod method = BetOptimizationMethod.ConsistencyWeighted)
     {
         Console.WriteLine($"🎯 Generating betting recommendations for Round {roundId}");
 
@@ -52,7 +53,7 @@ public class DailyBettingPipeline : IDailyBettingPipeline
 
         // Step 3: Generate bet series (SEQUENTIAL - no DbContext needed)
         Console.WriteLine("💰 Step 3: Generating betting strategies...");
-        var betSeries = _bettingService.GenerateBetSeriesParallel(predictions);
+        var betSeries = _bettingService.GenerateBetSeriesParallel(predictions, method);
 
         var recommendations = new DailyBettingRecommendations
         {

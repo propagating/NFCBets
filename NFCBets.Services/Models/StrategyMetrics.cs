@@ -20,6 +20,19 @@ public class StrategyMetrics
     public double BestDayROI { get; set; }
     public double WorstDayROI { get; set; }
     
+    // Risk metrics
     public double SharpeRatio { get; set; }
+    public double SortinoRatio { get; set; }
     public double MaxDrawdown { get; set; }
+    public double VolatilityStdDev { get; set; }
+    
+    // Consistency metrics
+    public double MedianDailyROI { get; set; }
+    public double WinStreakMax { get; set; }
+    public double LossStreakMax { get; set; }
+    public double ProfitFactor { get; set; } // Gross profit / Gross loss
+    
+    // Risk-adjusted scores
+    public double ConsistencyScore { get; set; }
+    public double RiskAdjustedScore { get; set; }
 }

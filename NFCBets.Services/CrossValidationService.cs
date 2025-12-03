@@ -2,6 +2,7 @@ using Microsoft.ML;
 using Microsoft.ML.Data;
 using NFCBets.Services.Interfaces;
 using NFCBets.Services.Models;
+using NFCBets.Utilities;
 
 namespace NFCBets.Services
 {
@@ -57,8 +58,8 @@ namespace NFCBets.Services
                 AverageAccuracy = foldResults.Average(f => f.Accuracy),
                 AverageAUC = foldResults.Average(f => f.AUC),
                 AverageF1Score = foldResults.Average(f => f.F1Score),
-                StdDevAccuracy = CalculateStandardDeviation(foldResults.Select(f => f.Accuracy)),
-                StdDevAUC = CalculateStandardDeviation(foldResults.Select(f => f.AUC))
+                StdDevAccuracy = MathUtilities.CalculateStandardDeviation(foldResults.Select(f => f.Accuracy)),
+                StdDevAUC = MathUtilities.CalculateStandardDeviation(foldResults.Select(f => f.AUC))
             };
 
             DisplayCrossValidationReport(report);
@@ -114,8 +115,8 @@ namespace NFCBets.Services
                 AverageAccuracy = foldResults.Average(f => f.Accuracy),
                 AverageAUC = foldResults.Average(f => f.AUC),
                 AverageF1Score = foldResults.Average(f => f.F1Score),
-                StdDevAccuracy = CalculateStandardDeviation(foldResults.Select(f => f.Accuracy)),
-                StdDevAUC = CalculateStandardDeviation(foldResults.Select(f => f.AUC))
+                StdDevAccuracy = MathUtilities.CalculateStandardDeviation(foldResults.Select(f => f.Accuracy)),
+                StdDevAUC = MathUtilities.CalculateStandardDeviation(foldResults.Select(f => f.AUC))
             };
 
             DisplayCrossValidationReport(report);
@@ -222,14 +223,6 @@ namespace NFCBets.Services
                 Console.WriteLine($"   ⚠️ Weak predictive performance");
         }
 
-        private double CalculateStandardDeviation(IEnumerable<double> values)
-        {
-            var valueList = values.ToList();
-            if (valueList.Count < 2) return 0;
 
-            var mean = valueList.Average();
-            var variance = valueList.Sum(v => Math.Pow(v - mean, 2)) / valueList.Count;
-            return Math.Sqrt(variance);
-        }
     }
 }

@@ -7,49 +7,52 @@ namespace NFCBets.Services;
 public class BettingStrategyService : IBettingStrategyService
 {
     private const int MIN_BETS_REQUIRED = 10;
+    private readonly RiskAdjustedBettingService _riskService;
 
-    public List<BetSeries> GenerateBetSeries(List<PiratePrediction> predictions)
+    public BettingStrategyService()
     {
-        Console.WriteLine("💰 Generating betting strategies...");
+        _riskService = new RiskAdjustedBettingService();
+    }
 
-        // Generate all series sequentially (no DB access, so parallel isn't needed)
+    public List<BetSeries> GenerateBetSeries(List<PiratePrediction> predictions, 
+        BetOptimizationMethod method = BetOptimizationMethod.ConsistencyWeighted)
+    {
+        Console.WriteLine($"💰 Generating betting strategies using {method} optimization...");
+
         var series = new List<BetSeries>
         {
-            GenerateConservativeSeriesOptimized(predictions),
-            GenerateBalancedSeriesOptimized(predictions),
-            GenerateModerateSeriesOptimized(predictions),
-            GenerateAggressiveSeriesOptimized(predictions),
-            GenerateHighRiskSeriesOptimized(predictions)
+            GenerateConservativeSeriesOptimized(predictions, method),
+            GenerateBalancedSeriesOptimized(predictions, method),
+            GenerateModerateSeriesOptimized(predictions, method),
+            GenerateAggressiveSeriesOptimized(predictions, method),
+            GenerateHighRiskSeriesOptimized(predictions, method)
         };
 
-        // Validate each series has at least 10 unique bets
+        // Validate unique bets
         foreach (var s in series)
         {
             if (s.Bets.Count < 10)
             {
-                Console.WriteLine($"⚠️ Warning: {s.Name} only generated {s.Bets.Count} bets. Generating more...");
-                s.Bets = EnsureMinimumBets(s.Bets, predictions, s.RiskLevel);
+                s.Bets = EnsureMinimumBets(s.Bets, predictions, s.RiskLevel, method);
             }
-
             s.Bets = EnsureUniqueBets(s.Bets);
         }
 
         return series;
     }
-
     // Optimization 3: Parallel processing for different series
 
 
     // OPTIMIZATION: Parallel series generation with task batching
-    public List<BetSeries> GenerateBetSeriesParallel(List<PiratePrediction> predictions)
+    public List<BetSeries> GenerateBetSeriesParallel(List<PiratePrediction> predictions, BetOptimizationMethod method = BetOptimizationMethod.ConsistencyWeighted)
     {
         var seriesTasks = new[]
         {
-            Task.Run(() => GenerateConservativeSeriesOptimized(predictions)),
-            Task.Run(() => GenerateBalancedSeriesOptimized(predictions)),
-            Task.Run(() => GenerateModerateSeriesOptimized(predictions)),
-            Task.Run(() => GenerateAggressiveSeriesOptimized(predictions)),
-            Task.Run(() => GenerateHighRiskSeriesOptimized(predictions))
+            Task.Run(() => GenerateConservativeSeriesOptimized(predictions, method)),
+            Task.Run(() => GenerateBalancedSeriesOptimized(predictions, method)),
+            Task.Run(() => GenerateModerateSeriesOptimized(predictions, method)),
+            Task.Run(() => GenerateAggressiveSeriesOptimized(predictions, method)),
+            Task.Run(() => GenerateHighRiskSeriesOptimized(predictions, method))
         };
 
         var series = Task.WhenAll(seriesTasks).Result;
@@ -59,7 +62,7 @@ public class BettingStrategyService : IBettingStrategyService
         {
             if (s.Bets.Count < 10)
             {
-                s.Bets = EnsureMinimumBets(s.Bets, predictions, s.RiskLevel);
+                s.Bets = EnsureMinimumBets(s.Bets, predictions, s.RiskLevel, method);
             }
             s.Bets = EnsureUniqueBets(s.Bets);
         });
@@ -451,18 +454,16 @@ public class BettingStrategyService : IBettingStrategyService
         return combinedProbability * totalPayout - 1.0;
     }
 
-    private List<Bet> EnsureMinimumBets(List<Bet> existingBets, List<PiratePrediction> predictions, RiskLevel riskLevel)
+    private List<Bet> EnsureMinimumBets(List<Bet> existingBets, List<PiratePrediction> predictions, RiskLevel riskLevel, BetOptimizationMethod method)
     {
         var bets = new List<Bet>(existingBets);
         var existingCombinations = new HashSet<string>(bets.Select(GetBetSignature));
 
-        // Generate more permissive combinations until we have 10
         var allPicks = predictions
             .GroupBy(p => p.ArenaId)
             .ToDictionary(g => g.Key, g => g.OrderByDescending(p => p.WinProbability).Take(5).ToList());
 
-        // Adjust parameters based on how many we need
-        var needed = MIN_BETS_REQUIRED - bets.Count;
+        var needed = 10 - bets.Count;
         var (minPirates, maxPirates) = riskLevel switch
         {
             RiskLevel.Low => (1, 3),
@@ -473,9 +474,12 @@ public class BettingStrategyService : IBettingStrategyService
             _ => (1, 5)
         };
 
-        var additionalBets = GenerateBetCombinationsBeamSearch(allPicks, minPirates, maxPirates, 500);
+        var additionalBets = GenerateBetCombinationsOptimized(allPicks, minPirates, maxPirates, maxCombinations: 5000); 
+    
+        // Sort by the specified method
+        var sortedAdditionalBets = SortBetsByMethod(additionalBets, method);
 
-        foreach (var bet in additionalBets)
+        foreach (var bet in sortedAdditionalBets)
         {
             var signature = GetBetSignature(bet);
             if (!existingCombinations.Contains(signature))
@@ -483,13 +487,14 @@ public class BettingStrategyService : IBettingStrategyService
                 bets.Add(bet);
                 existingCombinations.Add(signature);
 
-                if (bets.Count >= MIN_BETS_REQUIRED)
+                if (bets.Count >= 10)
                     break;
             }
         }
 
         return bets;
     }
+
 
     private List<Bet> EnsureUniqueBets(List<Bet> bets)
     {
@@ -499,7 +504,10 @@ public class BettingStrategyService : IBettingStrategyService
         foreach (var bet in bets)
         {
             var signature = GetBetSignature(bet);
-            if (signatures.Add(signature)) uniqueBets.Add(bet);
+            if (signatures.Add(signature))
+            {
+                uniqueBets.Add(bet);
+            }
         }
 
         return uniqueBets;
@@ -507,55 +515,61 @@ public class BettingStrategyService : IBettingStrategyService
 
     private string GetBetSignature(Bet bet)
     {
-        // Create a unique signature for the bet based on selected pirates
         return string.Join(",", bet.Pirates.OrderBy(p => p.ArenaId).Select(p => $"{p.ArenaId}:{p.PirateId}"));
     }
 
     // Optimized series generation
-    private BetSeries GenerateConservativeSeriesOptimized(List<PiratePrediction> predictions)
+   
+    private BetSeries GenerateConservativeSeriesOptimized(List<PiratePrediction> predictions, BetOptimizationMethod method)
     {
         var safePicks = PreFilterPirates(predictions, maxPerArena: 2, minProbability: 0.5f);
-        var combinations = GenerateBetCombinationsOptimized(safePicks, 1, 5, maxCombinations: 5000);
+        var combinations = GenerateBetCombinationsOptimized(safePicks, 1, 3, maxCombinations: 5000);
+
+        // Sort by risk-adjusted metric
+        var sortedBets = SortBetsByMethod(combinations, method);
 
         return new BetSeries
         {
             Name = "Conservative",
             RiskLevel = RiskLevel.Low,
-            Bets = combinations.OrderByDescending(c => c.ExpectedValue).Take(10).ToList(),
-            Description = "High probability picks (>50% win chance)"
+            Bets = sortedBets.Take(10).ToList(),
+            Description = $"High probability picks (>50% win chance), optimized by {method}"
         };
     }
 
-
-    private BetSeries GenerateBalancedSeriesOptimized(List<PiratePrediction> predictions)
+    private BetSeries GenerateBalancedSeriesOptimized(List<PiratePrediction> predictions, BetOptimizationMethod method)
     {
-        var picks = PreFilterPirates(predictions, 5, 0.25f);
-        var combinations = GenerateBetCombinationsOptimized(picks, 1, 5, maxCombinations: 5000);
+        var picks = PreFilterPirates(predictions, maxPerArena: 5, minProbability: 0.25f);
+        var combinations = GenerateBetCombinationsOptimized(picks, 1, 4, maxCombinations: 5000);
+
+        var sortedBets = SortBetsByMethod(combinations, method);
 
         return new BetSeries
         {
             Name = "Balanced",
             RiskLevel = RiskLevel.Medium,
-            Bets = combinations.OrderByDescending(c => c.ExpectedValue).Take(10).ToList(),
-            Description = "Mix of safe and moderate picks (>25% win chance)"
+            Bets = sortedBets.Take(10).ToList(),
+            Description = $"Mix of safe and moderate picks, optimized by {method}"
         };
     }
 
-    private BetSeries GenerateModerateSeriesOptimized(List<PiratePrediction> predictions)
+    private BetSeries GenerateModerateSeriesOptimized(List<PiratePrediction> predictions, BetOptimizationMethod method)
     {
-        var picks = PreFilterPirates(predictions, 5, 0.15f);
+        var picks = PreFilterPirates(predictions, maxPerArena: 5, minProbability: 0.15f);
         var combinations = GenerateBetCombinationsOptimized(picks, 1, 5, maxCombinations: 5000);
+
+        var sortedBets = SortBetsByMethod(combinations, method);
 
         return new BetSeries
         {
             Name = "Moderate",
             RiskLevel = RiskLevel.MediumHigh,
-            Bets = combinations.OrderByDescending(c => c.ExpectedValue).Take(10).ToList(),
-            Description = "Higher payout potential (>15% win chance)"
+            Bets = sortedBets.Take(10).ToList(),
+            Description = $"Higher payout potential, optimized by {method}"
         };
     }
 
-    private BetSeries GenerateAggressiveSeriesOptimized(List<PiratePrediction> predictions)
+    private BetSeries GenerateAggressiveSeriesOptimized(List<PiratePrediction> predictions, BetOptimizationMethod method)
     {
         var picks = predictions
             .Where(p => CalculateEV(p) > 0)
@@ -564,16 +578,18 @@ public class BettingStrategyService : IBettingStrategyService
 
         var combinations = GenerateBetCombinationsOptimized(picks, 1, 5, maxCombinations: 5000);
 
+        var sortedBets = SortBetsByMethod(combinations, method);
+
         return new BetSeries
         {
             Name = "Aggressive",
             RiskLevel = RiskLevel.High,
-            Bets = combinations.OrderByDescending(c => c.ExpectedValue).Take(10).ToList(),
-            Description = "Maximum EV picks with positive expected value"
+            Bets = sortedBets.Take(10).ToList(),
+            Description = $"Maximum EV with positive expected value, optimized by {method}"
         };
     }
 
-    private BetSeries GenerateHighRiskSeriesOptimized(List<PiratePrediction> predictions)
+    private BetSeries GenerateHighRiskSeriesOptimized(List<PiratePrediction> predictions, BetOptimizationMethod method)
     {
         var picks = predictions
             .GroupBy(p => p.ArenaId)
@@ -581,12 +597,51 @@ public class BettingStrategyService : IBettingStrategyService
 
         var combinations = GenerateBetCombinationsOptimized(picks, 1, 5, maxCombinations: 5000);
 
+        // For high risk, still prioritize payout but consider consistency
+        var sortedBets = method == BetOptimizationMethod.RawEV 
+            ? combinations.OrderByDescending(c => c.TotalPayout).ToList()
+            : SortBetsByMethod(combinations, method);
+
         return new BetSeries
         {
             Name = "High Risk / High Reward",
             RiskLevel = RiskLevel.VeryHigh,
-            Bets = combinations.OrderByDescending(c => c.TotalPayout).Take(10).ToList(),
-            Description = "Maximum payout combinations, all 5 arenas, highest odds"
+            Bets = sortedBets.Take(10).ToList(),
+            Description = $"Maximum payout combinations, optimized by {method}"
+        };
+    }
+
+    private List<Bet> SortBetsByMethod(List<Bet> bets, BetOptimizationMethod method)
+    {
+        return method switch
+        {
+            BetOptimizationMethod.RawEV => bets.OrderByDescending(b => b.ExpectedValue).ToList(),
+            
+            BetOptimizationMethod.Kelly => bets
+                .Select(b => new { Bet = b, Score = _riskService.CalculateKellyAdjustedEV(b) })
+                .OrderByDescending(x => x.Score)
+                .Select(x => x.Bet)
+                .ToList(),
+            
+            BetOptimizationMethod.ConsistencyWeighted => bets
+                .Select(b => new { Bet = b, Score = _riskService.CalculateConsistencyWeightedEV(b, winRateWeight: 0.6) })
+                .OrderByDescending(x => x.Score)
+                .Select(x => x.Bet)
+                .ToList(),
+            
+            BetOptimizationMethod.RiskAdjusted => bets
+                .Select(b => new { Bet = b, Score = _riskService.CalculateRiskAdjustedReturn(b) })
+                .OrderByDescending(x => x.Score)
+                .Select(x => x.Bet)
+                .ToList(),
+            
+            BetOptimizationMethod.CostAdjusted => bets
+                .Select(b => new { Bet = b, Score = _riskService.CalculateCostAdjustedEV(b) })
+                .OrderByDescending(x => x.Score)
+                .Select(x => x.Bet)
+                .ToList(),
+            
+            _ => bets.OrderByDescending(b => b.ExpectedValue).ToList()
         };
     }
 }

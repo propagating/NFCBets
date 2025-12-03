@@ -5,6 +5,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using NFCBets.EF.Models;
 using NFCBets.Services;
+using NFCBets.Services.Enums;
 using NFCBets.Services.Interfaces;
 using NFCBets.Services.Models;
 using NFCBets.Utilities;
@@ -39,6 +40,10 @@ static async Task Main(string[] args)
 
     var modelPath = "Models/foodclub_backtest_model.zip";
     var currentRound = 9703;
+    args[0] = "--retrain";
+    args[1] = "--evaluate";
+    args[2] = "--cross-validate";
+    args[3] = "--backtest";
     
     if(args.Contains("--collect-data"))
     {
@@ -103,14 +108,17 @@ static async Task Main(string[] args)
 
     if (args.Contains("--backtest"))
     {
+        //change method based on reports
         Console.WriteLine("\n💰 Running betting strategy backtest...");
         var backtestReport = await PerformanceHelper.MeasureAsync("Betting backtest",
-            () => evaluator.BacktestBettingStrategyAsync(5305, 9705));
+            () => evaluator.BacktestBettingStrategyAsync(5305, 9705, BetOptimizationMethod.ConsistencyWeighted));
     SaveBacktestReport(backtestReport);
         
     }
 
-    var recommendations = await pipeline.GenerateRecommendationsAsync(currentRound);
+    
+    //change method based on reports
+    var recommendations = await pipeline.GenerateRecommendationsAsync(currentRound, BetOptimizationMethod.ConsistencyWeighted);
 
     DisplayRecommendations(recommendations);
     SaveRecommendationsToFile(recommendations);

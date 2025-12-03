@@ -1,4 +1,4 @@
-namespace NFCBets.Services.Models;
+namespace NFCBets.Utilities.Models;
 
 public class BetSeriesResult
 {
