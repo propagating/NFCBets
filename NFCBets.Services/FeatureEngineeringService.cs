@@ -1,10 +1,10 @@
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Logging;
 using NFCBets.EF.Models;
 using NFCBets.Services.Interfaces;
 using NFCBets.Services.Models;
 
 namespace NFCBets.Services;
+
 public class FeatureEngineeringService : IFeatureEngineeringService
 {
     private readonly NfcbetsContext _context;
@@ -31,10 +31,10 @@ public class FeatureEngineeringService : IFeatureEngineeringService
             if (!placement.PirateId.HasValue || !placement.ArenaId.HasValue) continue;
 
             var rivalsInArena = await _context.RoundPiratePlacements
-                .Where(rpp => rpp.RoundId == roundId && 
-                             rpp.ArenaId == placement.ArenaId && 
-                             rpp.PirateId != placement.PirateId &&
-                             rpp.PirateId.HasValue)
+                .Where(rpp => rpp.RoundId == roundId &&
+                              rpp.ArenaId == placement.ArenaId &&
+                              rpp.PirateId != placement.PirateId &&
+                              rpp.PirateId.HasValue)
                 .Select(rpp => rpp.PirateId!.Value)
                 .ToListAsync();
 
@@ -57,7 +57,7 @@ public class FeatureEngineeringService : IFeatureEngineeringService
     public async Task<List<PirateFeatureRecord>> CreateTrainingDataAsync(int maxRounds = 4000)
     {
         Console.WriteLine("📊 Creating training data (sequential processing)...");
-        
+
         var features = new List<PirateFeatureRecord>();
 
         // Get all completed rounds SEQUENTIALLY
@@ -90,14 +90,14 @@ public class FeatureEngineeringService : IFeatureEngineeringService
             {
                 if (!placement.PirateId.HasValue || !placement.ArenaId.HasValue) continue;
 
-                var result = roundResults.FirstOrDefault(rr => 
-                    rr.PirateId == placement.PirateId.Value && 
+                var result = roundResults.FirstOrDefault(rr =>
+                    rr.PirateId == placement.PirateId.Value &&
                     rr.ArenaId == placement.ArenaId.Value);
 
                 var rivalsInArena = roundPlacements
-                    .Where(rpp => rpp.ArenaId == placement.ArenaId && 
-                                 rpp.PirateId != placement.PirateId &&
-                                 rpp.PirateId.HasValue)
+                    .Where(rpp => rpp.ArenaId == placement.ArenaId &&
+                                  rpp.PirateId != placement.PirateId &&
+                                  rpp.PirateId.HasValue)
                     .Select(rpp => rpp.PirateId!.Value)
                     .ToList();
 
@@ -116,9 +116,7 @@ public class FeatureEngineeringService : IFeatureEngineeringService
 
             processedCount++;
             if (processedCount % 100 == 0)
-            {
                 Console.WriteLine($"   Processed {processedCount}/{completedRounds.Count} rounds...");
-            }
         }
 
         Console.WriteLine($"✅ Generated {features.Count} training features");
@@ -140,7 +138,7 @@ public class FeatureEngineeringService : IFeatureEngineeringService
         // Calculate all features SEQUENTIALLY
         var historicalStats = await GetHistoricalStatsAsync(pirateId, arenaId, roundId);
         var arenaWinRate = await GetArenaWinRateAsync(pirateId, arenaId, roundId);
-        var recentWinRate = await GetRecentFormAsync(pirateId, roundId, 10);
+        var recentWinRate = await GetRecentFormAsync(pirateId, roundId);
         var rivalPerformance = await GetRivalPerformanceAsync(pirateId, rivalIds, roundId);
 
         return new PirateFeatureRecord
@@ -166,13 +164,14 @@ public class FeatureEngineeringService : IFeatureEngineeringService
         };
     }
 
-    private async Task<(double WinRate, int TotalAppearances, double AverageOdds)> GetHistoricalStatsAsync(int pirateId, int arenaId, int beforeRoundId)
+    private async Task<(double WinRate, int TotalAppearances, double AverageOdds)> GetHistoricalStatsAsync(int pirateId,
+        int arenaId, int beforeRoundId)
     {
         var results = await _context.RoundResults
-            .Where(rr => rr.PirateId == pirateId && 
-                        rr.IsComplete && 
-                        rr.RoundId.HasValue &&
-                        rr.RoundId < beforeRoundId)
+            .Where(rr => rr.PirateId == pirateId &&
+                         rr.IsComplete &&
+                         rr.RoundId.HasValue &&
+                         rr.RoundId < beforeRoundId)
             .ToListAsync();
 
         if (!results.Any())
@@ -187,11 +186,11 @@ public class FeatureEngineeringService : IFeatureEngineeringService
     private async Task<double> GetArenaWinRateAsync(int pirateId, int arenaId, int beforeRoundId)
     {
         var arenaResults = await _context.RoundResults
-            .Where(rr => rr.PirateId == pirateId && 
-                        rr.ArenaId == arenaId &&
-                        rr.IsComplete && 
-                        rr.RoundId.HasValue &&
-                        rr.RoundId < beforeRoundId)
+            .Where(rr => rr.PirateId == pirateId &&
+                         rr.ArenaId == arenaId &&
+                         rr.IsComplete &&
+                         rr.RoundId.HasValue &&
+                         rr.RoundId < beforeRoundId)
             .ToListAsync();
 
         if (!arenaResults.Any())
@@ -203,10 +202,10 @@ public class FeatureEngineeringService : IFeatureEngineeringService
     private async Task<double> GetRecentFormAsync(int pirateId, int beforeRoundId, int lastN = 10)
     {
         var recentResults = await _context.RoundResults
-            .Where(rr => rr.PirateId == pirateId && 
-                        rr.IsComplete && 
-                        rr.RoundId.HasValue &&
-                        rr.RoundId < beforeRoundId)
+            .Where(rr => rr.PirateId == pirateId &&
+                         rr.IsComplete &&
+                         rr.RoundId.HasValue &&
+                         rr.RoundId < beforeRoundId)
             .OrderByDescending(rr => rr.RoundId)
             .Take(lastN)
             .ToListAsync();
@@ -226,18 +225,18 @@ public class FeatureEngineeringService : IFeatureEngineeringService
             return (0, 0, 0);
 
         var pirateResults = await _context.RoundResults
-            .Where(rr => rr.PirateId == pirateId && 
-                        rr.IsComplete && 
-                        rr.RoundId.HasValue &&
-                        rr.RoundId < beforeRoundId)
+            .Where(rr => rr.PirateId == pirateId &&
+                         rr.IsComplete &&
+                         rr.RoundId.HasValue &&
+                         rr.RoundId < beforeRoundId)
             .Select(rr => new { rr.RoundId, rr.ArenaId, rr.IsWinner })
             .ToListAsync();
 
         var rivalResults = await _context.RoundResults
-            .Where(rr => rivalIds.Contains(rr.PirateId) && 
-                        rr.IsComplete && 
-                        rr.RoundId.HasValue &&
-                        rr.RoundId < beforeRoundId)
+            .Where(rr => rivalIds.Contains(rr.PirateId) &&
+                         rr.IsComplete &&
+                         rr.RoundId.HasValue &&
+                         rr.RoundId < beforeRoundId)
             .Select(rr => new { rr.RoundId, rr.ArenaId, rr.PirateId })
             .ToListAsync();
 

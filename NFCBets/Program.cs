@@ -1,5 +1,4 @@
 ﻿using System.Text.Json;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -14,126 +13,168 @@ namespace NFCBets;
 
 internal class Program
 {
-static async Task Main(string[] args)
-{
-    var host = Host.CreateDefaultBuilder(args)
-        .ConfigureServices(services =>
-        {
-            services.AddDbContext<NfcbetsContext>();
-            services.AddScoped<IFoodAdjustmentService, FoodAdjustmentService>();
-            services.AddScoped<IFeatureEngineeringService, FeatureEngineeringService>();
-            services.AddScoped<IMlModelService, MlModelService>();
-            services.AddScoped<IBettingStrategyService, BettingStrategyService>();
-            services.AddScoped<IDailyBettingPipeline, DailyBettingPipeline>();
-            services.AddScoped<IBettingPerformanceEvaluator, BettingPerformanceEvaluator>();
-            services.AddHttpClient<IFoodClubDataService, FoodClubDataService>();
-            services.AddScoped<ICrossValidationService, CrossValidationService>();
-            services.AddLogging(builder => builder.SetMinimumLevel(LogLevel.Warning));
-        })
-        .Build();
-
-    var mlService = host.Services.GetRequiredService<IMlModelService>();
-    var evaluator = host.Services.GetRequiredService<IBettingPerformanceEvaluator>();
-    var pipeline = host.Services.GetRequiredService<IDailyBettingPipeline>();
-    var dataService = host.Services.GetRequiredService<IFoodClubDataService>();
-    
-
-    var modelPath = "Models/foodclub_backtest_model.zip";
-    var currentRound = 9703;
-    args[0] = "--retrain";
-    args[1] = "--evaluate";
-    args[2] = "--cross-validate";
-    args[3] = "--backtest";
-    
-    if(args.Contains("--collect-data"))
+    private static async Task Main(string[] args)
     {
-        Console.WriteLine("📥 Collecting historical Food Club data...");
+        var host = Host.CreateDefaultBuilder(args)
+            .ConfigureServices(services =>
+            {
+                services.AddDbContext<NfcbetsContext>();
+                services.AddScoped<IFoodAdjustmentService, FoodAdjustmentService>();
+                services.AddScoped<IFeatureEngineeringService, FeatureEngineeringService>();
+                services.AddScoped<IMlModelService, MlModelService>();
+                services.AddScoped<IBettingStrategyService, BettingStrategyService>();
+                services.AddScoped<IDailyBettingPipeline, DailyBettingPipeline>();
+                services.AddScoped<IBettingPerformanceEvaluator, BettingPerformanceEvaluator>();
+                services.AddHttpClient<IFoodClubDataService, FoodClubDataService>();
+                services.AddScoped<ICrossValidationService, CrossValidationService>();
+                services.AddLogging(builder => builder.SetMinimumLevel(LogLevel.Warning));
+            })
+            .Build();
+
+        var mlService = host.Services.GetRequiredService<IMlModelService>();
+        var evaluator = host.Services.GetRequiredService<IBettingPerformanceEvaluator>();
+        var pipeline = host.Services.GetRequiredService<IDailyBettingPipeline>();
+        var dataService = host.Services.GetRequiredService<IFoodClubDataService>();
+
+
+        var modelPath = "Models/foodclub_backtest_model.zip";
+        var currentRound = 9703;
+        args[0] = "--retrain --evaluate --cross-validate --backtest --measure-performance";
+
+        if (args.Contains("--collect-data"))
+        {
+            Console.WriteLine("📥 Collecting historical Food Club data...");
+            await dataService.CollectRangeAsync(5300, currentRound);
+            return;
+        }
+
         await dataService.CollectRangeAsync(5300, currentRound);
-        return;
-    }
-    
-    await dataService.CollectRangeAsync(5300, currentRound);
 
-    // Generate today's recommendations
-    if (!File.Exists(modelPath) || args.Contains("--retrain"))
-    {
-
-        if (args.Contains("--evaluate"))
+        // Generate today's recommendations
+        if (!File.Exists(modelPath) || args.Contains("--retrain"))
         {
-            await evaluator.FindRoundsWithMultipleWinnersAsync(5300, 9705);
-            Console.WriteLine("🏋️ Training model with evaluation...");
-            await PerformanceHelper.MeasureAsync("Training and evaluating model",
-                () => mlService.TrainAndEvaluateModelAsync());        // await mlService.TrainAndEvaluateModelAsync();
-        
+            if (args.Contains("--evaluate"))
+            {
+                await evaluator.FindRoundsWithMultipleWinnersAsync(5300, 9705);
+                Console.WriteLine("🏋️ Training model with evaluation...");
+                if (args.Contains("--measure-performance"))
+                    await PerformanceHelper.MeasureAsync("Training and evaluating model",
+                        () => mlService.TrainAndEvaluateModelAsync()); // await mlService.TrainAndEvaluateModelAsync();
+                else await mlService.TrainAndEvaluateModelAsync();
+            }
+            else
+            {
+                if (args.Contains("--measure-performance"))
+                    await PerformanceHelper.MeasureAsync("Training model", mlService.TrainModelAsync);
+                else await mlService.TrainModelAsync();
+            }
+
+            mlService.SaveModel(modelPath);
         }
         else
         {
-            await PerformanceHelper.MeasureAsync("Training model", mlService.TrainModelAsync);
-        } 
-        
-        mlService.SaveModel(modelPath);  
-    }
-    else
-    {
-        Console.WriteLine("📂 Loading existing model...");
-        mlService.LoadModel(modelPath);
-    }
-    
-    if (args.Contains("--cross-validate"))
-    {
-        var crossValService = host.Services.GetRequiredService<ICrossValidationService>();
-        
-        Console.WriteLine("Running comprehensive cross-validation...\n");
-        
-        var timeSeriesCV = await crossValService.PerformTimeSeriesCrossValidationAsync(numFolds: 5);
-        var kFoldCV = await crossValService.PerformKFoldCrossValidationAsync(k: 5);
-        
-        // Save results
-        var cvReport = new
+            Console.WriteLine("📂 Loading existing model...");
+            mlService.LoadModel(modelPath);
+        }
+
+        if (args.Contains("--cross-validate"))
         {
-            TimeSeriesCV = timeSeriesCV,
-            KFoldCV = kFoldCV,
-            Recommendation = timeSeriesCV.AverageAUC > kFoldCV.AverageAUC 
-                ? "Use Time-Series CV results (better for temporal data)" 
-                : "Both methods show similar performance"
-        };
-        
-        Directory.CreateDirectory("Reports");
-        var json = JsonSerializer.Serialize(cvReport, new JsonSerializerOptions { WriteIndented = true });
-        File.WriteAllText("Reports/cross_validation_report.json", json);
-        
-        return;
+            var crossValService = host.Services.GetRequiredService<ICrossValidationService>();
+
+            Console.WriteLine("Running comprehensive cross-validation...\n");
+
+            if (args.Contains("--measure-performance"))
+            {
+                var kFoldCV = await PerformanceHelper.MeasureAsync("K Folds Cross Validation",
+                    () => crossValService.PerformKFoldCrossValidationAsync());
+                var timeSeriesCV = await PerformanceHelper.MeasureAsync("Time Series Cross Validation",
+                    () => crossValService.PerformTimeSeriesCrossValidationAsync());
+
+                // Save results
+                var cvReport = new
+                {
+                    TimeSeriesCV = timeSeriesCV,
+                    KFoldCV = kFoldCV,
+                    Recommendation = timeSeriesCV.AverageAUC > kFoldCV.AverageAUC
+                        ? "Use Time-Series CV results (better for temporal data)"
+                        : "Both methods show similar performance"
+                };
+
+                Directory.CreateDirectory("Reports");
+                var json = JsonSerializer.Serialize(cvReport, new JsonSerializerOptions { WriteIndented = true });
+                File.WriteAllText("Reports/cross_validation_report.json", json);
+            }
+            else
+            {
+                var timeSeriesCV = await crossValService.PerformTimeSeriesCrossValidationAsync();
+                var kFoldCV = await crossValService.PerformKFoldCrossValidationAsync();
+
+                // Save results
+                var cvReport = new
+                {
+                    TimeSeriesCV = timeSeriesCV,
+                    KFoldCV = kFoldCV,
+                    Recommendation = timeSeriesCV.AverageAUC > kFoldCV.AverageAUC
+                        ? "Use Time-Series CV results (better for temporal data)"
+                        : "Both methods show similar performance"
+                };
+
+                Directory.CreateDirectory("Reports");
+                var json = JsonSerializer.Serialize(cvReport, new JsonSerializerOptions { WriteIndented = true });
+                File.WriteAllText("Reports/cross_validation_report.json", json);
+            }
+
+            return;
+        }
+
+
+        if (args.Contains("--backtest"))
+        {
+            //change method based on reports
+            Console.WriteLine("\n💰 Running betting strategy backtest...");
+            if (args.Contains("--measure-performance"))
+            {
+                var backtestReport = await PerformanceHelper.MeasureAsync("Betting backtest",
+                    () => evaluator.BacktestBettingStrategyAsync(5305, 9705,
+                        BetOptimizationMethod.ConsistencyWeighted));
+                SaveBacktestReport(backtestReport);
+            }
+            else
+            {
+                var backtestReport =
+                    await evaluator.BacktestBettingStrategyAsync(5305, 9705, BetOptimizationMethod.ConsistencyWeighted);
+                SaveBacktestReport(backtestReport);
+            }
+        }
+
+        if (args.Contains("--measure-performance"))
+        {
+            Console.WriteLine("\n💰 Generating betting recommendations with performance measurement...");
+            var recommendations = await PerformanceHelper.MeasureAsync("Generate Recommendations",
+                () => pipeline.GenerateRecommendationsAsync(currentRound, BetOptimizationMethod.ConsistencyWeighted));
+
+            DisplayRecommendations(recommendations);
+            SaveRecommendationsToFile(recommendations);
+        }
+        else
+        {
+            var recommendations =
+                await pipeline.GenerateRecommendationsAsync(currentRound, BetOptimizationMethod.ConsistencyWeighted);
+            DisplayRecommendations(recommendations);
+            SaveRecommendationsToFile(recommendations);
+        } //change method based on reports
     }
 
-
-    if (args.Contains("--backtest"))
+    private static void SaveBacktestReport(BettingPerformanceReport report)
     {
-        //change method based on reports
-        Console.WriteLine("\n💰 Running betting strategy backtest...");
-        var backtestReport = await PerformanceHelper.MeasureAsync("Betting backtest",
-            () => evaluator.BacktestBettingStrategyAsync(5305, 9705, BetOptimizationMethod.ConsistencyWeighted));
-    SaveBacktestReport(backtestReport);
-        
+        Directory.CreateDirectory("Reports");
+        var fileName = Path.Combine("Reports", $"backtest_{DateTime.UtcNow:yyyyMMdd_HHmmss}.json");
+
+        var json = JsonSerializer.Serialize(report, new JsonSerializerOptions { WriteIndented = true });
+        File.WriteAllText(fileName, json);
+
+        Console.WriteLine($"\n📄 Backtest report saved to {fileName}");
     }
-
-    
-    //change method based on reports
-    var recommendations = await pipeline.GenerateRecommendationsAsync(currentRound, BetOptimizationMethod.ConsistencyWeighted);
-
-    DisplayRecommendations(recommendations);
-    SaveRecommendationsToFile(recommendations);
-}
-
-static void SaveBacktestReport(BettingPerformanceReport report)
-{
-    Directory.CreateDirectory("Reports");
-    var fileName = Path.Combine("Reports", $"backtest_{DateTime.UtcNow:yyyyMMdd_HHmmss}.json");
-    
-    var json = JsonSerializer.Serialize(report, new JsonSerializerOptions { WriteIndented = true });
-    File.WriteAllText(fileName, json);
-    
-    Console.WriteLine($"\n📄 Backtest report saved to {fileName}");
-}
 
     private static void DisplayRecommendations(DailyBettingRecommendations recommendations)
     {
@@ -168,6 +209,4 @@ static void SaveBacktestReport(BettingPerformanceReport report)
 
         Console.WriteLine($"\n💾 Recommendations saved to {fileName}");
     }
-
-
 }
