@@ -117,4 +117,38 @@ public static class MathUtilities
 
         return maxDrawdown;
     }
+    
+    public static double EuclideanDistance(double[] a, double[] b)
+    {
+        return Math.Sqrt(a.Zip(b, (x, y) => Math.Pow(x - y, 2)).Sum());
+    }
+
+    public static double CalculateVariance(IEnumerable<double> values)
+    {
+        var valueList = values.ToList();
+        if (valueList.Count < 2) return 0;
+
+        var mean = valueList.Average();
+        return valueList.Sum(v => Math.Pow(v - mean, 2)) / (valueList.Count - 1);
+    }
+
+    public static double CalculateStandardError(IEnumerable<double> values)
+    {
+        var valueList = values.ToList();
+        if (valueList.Count < 2) return 0;
+
+        var variance = CalculateVariance(values);
+        return Math.Sqrt(variance / valueList.Count);
+    }
+
+    public static double CalculatePValueFromT(double tStat, int sampleSize)
+    {
+        // Rough approximation using standard normal
+        var absTStat = Math.Abs(tStat);
+            
+        if (absTStat > 2.576) return 0.01;
+        if (absTStat > 1.96) return 0.05;
+        if (absTStat > 1.645) return 0.10;
+        return 0.20;
+    }
 }
