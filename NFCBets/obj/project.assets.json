@@ -1617,6 +1617,20 @@
           "buildTransitive/net8.0/_._": {}
         }
       },
+      "NFCBets.Causal/1.0.0": {
+        "type": "project",
+        "framework": ".NETCoreApp,Version=v10.0",
+        "dependencies": {
+          "NFCBets.EF": "1.0.0",
+          "NFCBets.Utilities": "1.0.0"
+        },
+        "compile": {
+          "bin/placeholder/NFCBets.Causal.dll": {}
+        },
+        "runtime": {
+          "bin/placeholder/NFCBets.Causal.dll": {}
+        }
+      },
       "NFCBets.EF/1.0.0": {
         "type": "project",
         "framework": ".NETCoreApp,Version=v10.0",
@@ -1628,6 +1642,19 @@
         },
         "runtime": {
           "bin/placeholder/NFCBets.EF.dll": {}
+        }
+      },
+      "NFCBets.Evaluation/1.0.0": {
+        "type": "project",
+        "framework": ".NETCoreApp,Version=v10.0",
+        "dependencies": {
+          "NFCBets.Services": "1.0.0"
+        },
+        "compile": {
+          "bin/placeholder/NFCBets.Evaluation.dll": {}
+        },
+        "runtime": {
+          "bin/placeholder/NFCBets.Evaluation.dll": {}
         }
       },
       "NFCBets.Repository/1.0.0": {
@@ -1650,6 +1677,7 @@
           "Microsoft.Extensions.Logging.Abstractions": "10.0.0",
           "Microsoft.ML": "5.0.0",
           "Microsoft.ML.LightGbm": "5.0.0",
+          "NFCBets.Causal": "1.0.0",
           "NFCBets.Repository": "1.0.0",
           "NFCBets.Utilities": "1.0.0"
         },
@@ -3821,10 +3849,20 @@
         "useSharedDesignerContext.txt"
       ]
     },
+    "NFCBets.Causal/1.0.0": {
+      "type": "project",
+      "path": "../NFCBets.Causal/NFCBets.Causal.csproj",
+      "msbuildProject": "../NFCBets.Causal/NFCBets.Causal.csproj"
+    },
     "NFCBets.EF/1.0.0": {
       "type": "project",
       "path": "../NFCBets.EF/NFCBets.EF.csproj",
       "msbuildProject": "../NFCBets.EF/NFCBets.EF.csproj"
+    },
+    "NFCBets.Evaluation/1.0.0": {
+      "type": "project",
+      "path": "../NFCBets.Evaluation/NFCBets.Evaluation.csproj",
+      "msbuildProject": "../NFCBets.Evaluation/NFCBets.Evaluation.csproj"
     },
     "NFCBets.Repository/1.0.0": {
       "type": "project",
@@ -3847,6 +3885,7 @@
       "Microsoft.Extensions.Hosting >= 10.0.0",
       "Microsoft.Extensions.Http >= 10.0.0",
       "Microsoft.ML >= 5.0.0",
+      "NFCBets.Evaluation >= 1.0.0",
       "NFCBets.Services >= 1.0.0",
       "NLog >= 6.0.6",
       "System.Text.Json >= 10.0.0"
@@ -3885,6 +3924,9 @@
         "net10.0": {
           "targetAlias": "net10.0",
           "projectReferences": {
+            "E:\\Projects\\C#\\NFCBets\\NFCBets.Evaluation\\NFCBets.Evaluation.csproj": {
+              "projectPath": "E:\\Projects\\C#\\NFCBets\\NFCBets.Evaluation\\NFCBets.Evaluation.csproj"
+            },
             "E:\\Projects\\C#\\NFCBets\\NFCBets.Services\\NFCBets.Services.csproj": {
               "projectPath": "E:\\Projects\\C#\\NFCBets\\NFCBets.Services\\NFCBets.Services.csproj"
             }

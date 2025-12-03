@@ -10,6 +10,12 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NFCBets.EF", "NFCBets.EF\NF
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NFCBets.Utilities", "NFCBets.Utilities\NFCBets.Utilities.csproj", "{016F2637-6ABB-4D74-9AE4-7BFAD44B6603}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NFCBets.Causal", "NFCBets.Causal\NFCBets.Causal.csproj", "{748E3210-8301-470B-A7BD-E42D038DD204}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NFCBets.Classical", "NFCBets.Classical\NFCBets.Classical.csproj", "{1A22E83A-B213-4D89-B512-F8804FC92430}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NFCBets.Evaluation", "NFCBets.Evaluation\NFCBets.Evaluation.csproj", "{7D8D8C8B-5CCF-44EC-83B8-072D28254024}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -36,5 +42,17 @@ Global
 		{016F2637-6ABB-4D74-9AE4-7BFAD44B6603}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{016F2637-6ABB-4D74-9AE4-7BFAD44B6603}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{016F2637-6ABB-4D74-9AE4-7BFAD44B6603}.Release|Any CPU.Build.0 = Release|Any CPU
+		{748E3210-8301-470B-A7BD-E42D038DD204}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{748E3210-8301-470B-A7BD-E42D038DD204}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{748E3210-8301-470B-A7BD-E42D038DD204}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{748E3210-8301-470B-A7BD-E42D038DD204}.Release|Any CPU.Build.0 = Release|Any CPU
+		{1A22E83A-B213-4D89-B512-F8804FC92430}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{1A22E83A-B213-4D89-B512-F8804FC92430}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{1A22E83A-B213-4D89-B512-F8804FC92430}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{1A22E83A-B213-4D89-B512-F8804FC92430}.Release|Any CPU.Build.0 = Release|Any CPU
+		{7D8D8C8B-5CCF-44EC-83B8-072D28254024}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{7D8D8C8B-5CCF-44EC-83B8-072D28254024}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{7D8D8C8B-5CCF-44EC-83B8-072D28254024}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{7D8D8C8B-5CCF-44EC-83B8-072D28254024}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal

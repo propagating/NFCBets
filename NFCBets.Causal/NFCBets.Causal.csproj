@@ -1,0 +1,14 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+    </PropertyGroup>
+
+    <ItemGroup>
+      <ProjectReference Include="..\NFCBets.EF\NFCBets.EF.csproj" />
+      <ProjectReference Include="..\NFCBets.Utilities\NFCBets.Utilities.csproj" />
+    </ItemGroup>
+
+</Project>
