@@ -1,6 +1,8 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using NFCBets.EF.Models;
+using NFCBets.Services.Interfaces;
+using NFCBets.Services.Models;
 
 namespace NFCBets.Services;
 
@@ -38,12 +40,19 @@ public class FoodClubDataService : IFoodClubDataService
         }
     }
 
-    public async Task<List<int>> CollectRangeAsync(int startRound, int endRound)
+    public async Task<List<int>> CollectRangeAsync(int startRound, int endRound, bool forceCollect = false)
     {
         var successfulRounds = new List<int>();
 
+        var completedRounds = await _context.RoundResults.Where(x => x.IsComplete).Select(x => x.RoundId).ToListAsync();
         for (var round = startRound; round <= endRound; round++)
         {
+            if (completedRounds.Contains(round) && !forceCollect)
+            {
+                Console.WriteLine($"Skipping round {round} as it's already been collected");
+                continue;
+            }
+
             if (await CollectAndSaveRoundAsync(round))
             {
                 successfulRounds.Add(round);
@@ -53,9 +62,6 @@ public class FoodClubDataService : IFoodClubDataService
             {
                 Console.WriteLine($"❌ Failed round {round}");
             }
-
-            // Rate limiting
-            await Task.Delay(100);
         }
 
         return successfulRounds;
@@ -104,9 +110,14 @@ public class FoodClubDataService : IFoodClubDataService
 
                 await _context.SaveChangesAsync();
 
+
                 // Save results if round is complete
                 if (roundData.Winners?.Any() == true)
-                    await SaveRoundResultsAsync(roundData.Round, arenaId, pirateIds, currentOdds, roundData.Winners);
+                {
+                    var winnerPosition = roundData.Winners[arenaIndex];
+                    var winnerId = roundData.Pirates[arenaIndex][winnerPosition - 1];
+                    await SaveRoundResultsAsync(roundData.Round, arenaId, pirateIds, currentOdds, winnerId);
+                }
             }
 
             await _context.SaveChangesAsync();
@@ -146,6 +157,9 @@ public class FoodClubDataService : IFoodClubDataService
         {
             var pirateId = pirateIds[position];
 
+            // SKIP the 0th position for odds since they are  1:1 odds that are placeholders for if you placed no bet
+            var oddsPosition = position + 1;
+
             var existing = await _context.RoundPiratePlacements
                 .FirstOrDefaultAsync(rpp => rpp.RoundId == roundId &&
                                             rpp.ArenaId == arenaId &&
@@ -163,26 +177,29 @@ public class FoodClubDataService : IFoodClubDataService
                     PirateId = pirateId,
                     PirateSeatPosition = position,
                     PirateFoodAdjustment = foodAdjustment,
-                    StartingOdds = openingOdds[position],
-                    CurrentOdds = currentOdds[position]
+                    StartingOdds = openingOdds[oddsPosition],
+                    CurrentOdds = currentOdds[oddsPosition]
                 });
             }
             else
             {
-                // Update existing (don't change StartingOdds)
-                existing.CurrentOdds = currentOdds[position];
+                existing.CurrentOdds = currentOdds[oddsPosition];
                 existing.PirateFoodAdjustment = foodAdjustment;
             }
         }
     }
 
     private async Task SaveRoundResultsAsync(int roundId, int arenaId, List<int> pirateIds, List<int> endingOdds,
-        List<int> winners)
+        int winnerId)
     {
         for (var position = 0; position < pirateIds.Count; position++)
         {
             var pirateId = pirateIds[position];
-            var isWinner = winners.Contains(pirateId);
+
+            // SKIP the 0th position for odds since they are  1:1 odds that are placeholders for if you placed no bet
+            var oddsPosition = position + 1;
+
+            var isWinner = winnerId == pirateId;
 
             var existing = await _context.RoundResults
                 .FirstOrDefaultAsync(rr => rr.RoundId == roundId &&
@@ -196,19 +213,17 @@ public class FoodClubDataService : IFoodClubDataService
                     RoundId = roundId,
                     ArenaId = arenaId,
                     PirateId = pirateId,
-                    EndingOdds = endingOdds[position],
+                    EndingOdds = endingOdds[oddsPosition],
                     IsWinner = isWinner,
                     IsComplete = true
                 });
             }
             else
             {
-                existing.EndingOdds = endingOdds[position];
+                existing.EndingOdds = endingOdds[oddsPosition];
                 existing.IsWinner = isWinner;
                 existing.IsComplete = true;
             }
         }
     }
 }
-
-// Data model for the API response

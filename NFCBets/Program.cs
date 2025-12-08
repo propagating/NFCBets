@@ -2,9 +2,16 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using NFCBets.Causal;
+using NFCBets.Causal.Interfaces;
 using NFCBets.EF.Models;
+using NFCBets.Evaluation;
+using NFCBets.Evaluation.Interfaces;
 using NFCBets.Services;
+using NFCBets.Services.Enums;
 using NFCBets.Services.Interfaces;
+using NFCBets.Services.Models;
+using NFCBets.Utilities;
 
 namespace NFCBets;
 
@@ -21,24 +28,115 @@ internal class Program
                 services.AddScoped<IMlModelService, MlModelService>();
                 services.AddScoped<IBettingStrategyService, BettingStrategyService>();
                 services.AddScoped<IDailyBettingPipeline, DailyBettingPipeline>();
+                services.AddScoped<IBettingPerformanceEvaluator, BettingPerformanceEvaluator>();
+                services.AddScoped<ICausalInferenceService, CausalInferenceService>();
+                services.AddScoped<IBettingStrategyComparisonService, BettingStrategyComparisonService>();
+                services.AddScoped<ICrossValidationService, CrossValidationService>();
                 services.AddHttpClient<IFoodClubDataService, FoodClubDataService>();
-            }).ConfigureLogging(logging => logging.SetMinimumLevel(LogLevel.Warning))
+                services.AddScoped<IDataValidationService, DataValidationService>();
+                services.AddLogging(builder => builder.SetMinimumLevel(LogLevel.Warning));
+            })
             .Build();
 
         var mlService = host.Services.GetRequiredService<IMlModelService>();
+        var evaluator = host.Services.GetRequiredService<IBettingPerformanceEvaluator>();
         var pipeline = host.Services.GetRequiredService<IDailyBettingPipeline>();
         var dataService = host.Services.GetRequiredService<IFoodClubDataService>();
 
-        var modelPath = $"Models/foodclub_evaluated_model-{DateTime.Now}.zip";
 
+        var modelPath = "Models/foodclub_bt_cv_causal_betoptimization_model.zip";
+        var currentRound = 9706;
+        args = args.Length == 0
+            ? new[]
+            {
+                "--measure-performance",
+                "--validate-data",
+                "--collect-data",
+                "--causal",
+                "--backtest"
+            }
+            : args;
+
+        if (args.Contains("--collect-data"))
+        {
+            Console.WriteLine("📥 Collecting historical Food Club data...");
+            if (args.Contains("--measure-performance"))
+            {
+                await PerformanceHelper.MeasureAsync("Collecting historical data",
+                    () => dataService.CollectRangeAsync(5300, currentRound, true));
+            }
+            else
+            {
+                await dataService.CollectRangeAsync(5300, currentRound, true);
+            }
+        }
+
+        if (args.Contains("--validate-data"))
+        {
+            Console.WriteLine("🔍 Validating data quality...");
+            var validationService = host.Services.GetRequiredService<IDataValidationService>();
+
+            if (args.Contains("--measure-performance"))
+            {
+                var report = await PerformanceHelper.MeasureAsync("Validating data quality",
+                    () => validationService.ValidateDataQualityAsync(startRound: 5300, endRound: 9705));
+                
+                // Save report
+                Directory.CreateDirectory("Reports");
+                var fileName = Path.Combine("Reports", $"data_validation_{DateTime.UtcNow:yyyyMMdd_HHmmss}.json");
+                var json = JsonSerializer.Serialize(report, new JsonSerializerOptions { WriteIndented = true });
+                File.WriteAllText(fileName, json);
+                Console.WriteLine($"\n📄 Validation report saved to {fileName}");
+            }
+            else 
+            {
+                var report = await validationService.ValidateDataQualityAsync(startRound: 5300, endRound: 9705);
+    
+                // Save report
+                Directory.CreateDirectory("Reports");
+                var fileName = Path.Combine("Reports", $"data_validation_{DateTime.UtcNow:yyyyMMdd_HHmmss}.json");
+                var json = JsonSerializer.Serialize(report, new JsonSerializerOptions { WriteIndented = true });
+                File.WriteAllText(fileName, json);
+                Console.WriteLine($"\n📄 Validation report saved to {fileName}");
+            }
+        }
+
+        // Generate today's recommendations
         if (!File.Exists(modelPath) || args.Contains("--retrain"))
         {
-            Console.WriteLine("🏋️ Training new model with comprehensive evaluation...");
-
-            // Use the evaluation version instead of basic training
-            await mlService.TrainAndEvaluateModelAsync();
-
-            mlService.SaveModel(modelPath);
+            if (args.Contains("--evaluate"))
+            {
+                Console.WriteLine("🏋️ Training classical model with evaluation...");
+                if (args.Contains("--measure-performance"))
+                {
+                    await PerformanceHelper.MeasureAsync("Find Rounds with multiple winners",
+                        () => evaluator.FindRoundsWithMultipleWinnersAsync(5300, 9705));
+                    await PerformanceHelper.MeasureAsync("Training and evaluating model",
+                        () => mlService.TrainAndEvaluateModelAsync());
+                    mlService.SaveModel(modelPath);
+                }
+                else
+                {
+                    await evaluator.FindRoundsWithMultipleWinnersAsync(5300, 9705);
+                    await mlService.TrainAndEvaluateModelAsync();
+                    mlService.SaveModel(modelPath);
+                }
+            }
+            else
+            {
+                if (args.Contains("--measure-performance"))
+                {
+                    await PerformanceHelper.MeasureAsync("Find Rounds with multiple winners",
+                        () => evaluator.FindRoundsWithMultipleWinnersAsync(5300, 9705));
+                    await PerformanceHelper.MeasureAsync("Training model", mlService.TrainModelAsync);
+                    mlService.SaveModel(modelPath);
+                }
+                else
+                {
+                    await mlService.TrainModelAsync();
+                    mlService.SaveModel(modelPath);
+                }
+            }
         }
         else
         {
@@ -46,29 +144,142 @@ internal class Program
             mlService.LoadModel(modelPath);
         }
 
-        // Generate today's recommendations
-        var currentRound = 9705;
-        Console.WriteLine("Gathering last 100 rounds of data...");
-        await dataService.CollectRangeAsync(currentRound - 100, currentRound);
-        var recommendations = await pipeline.GenerateRecommendationsAsync(currentRound);
-
-        // Validate all series have exactly 10 unique bets
-        Console.WriteLine("\n✅ Bet Series Validation:");
-        var allValid = true;
-        foreach (var series in recommendations.BetSeries)
+        //This isnt' really needed when running evaluate since both of these are run as part of the evaluation method
+        //so we can skip them if we're already running evaluation unless they indicate forced cross validation
+        if (args.Contains("--force-cross-validate") ||
+            (!args.Contains("--evaluate") && args.Contains("--cross-validate")))
         {
-            var isValid = series.Bets.Count == 10;
-            var status = isValid ? "✅" : "❌";
-            Console.WriteLine($"   {status} {series.Name}: {series.Bets.Count} unique bets");
+            var crossValService = host.Services.GetRequiredService<ICrossValidationService>();
 
-            if (!isValid) allValid = false;
+            Console.WriteLine("Running comprehensive cross-validation...\n");
+
+            if (args.Contains("--measure-performance"))
+            {
+                var kFoldCV = await PerformanceHelper.MeasureAsync("K Folds Cross Validation",
+                    () => crossValService.PerformKFoldCrossValidationAsync());
+                var timeSeriesCV = await PerformanceHelper.MeasureAsync("Time Series Cross Validation",
+                    () => crossValService.PerformTimeSeriesCrossValidationAsync());
+
+                // Save results
+                var cvReport = new
+                {
+                    TimeSeriesCV = timeSeriesCV,
+                    KFoldCV = kFoldCV,
+                    Recommendation = timeSeriesCV.AverageAUC > kFoldCV.AverageAUC
+                        ? "Use Time-Series CV results (better for temporal data)"
+                        : "Both methods show similar performance"
+                };
+
+                Directory.CreateDirectory("Reports");
+                var json = JsonSerializer.Serialize(cvReport, new JsonSerializerOptions { WriteIndented = true });
+                File.WriteAllText("Reports/cross_validation_report.json", json);
+            }
+            else
+            {
+                var timeSeriesCV = await crossValService.PerformTimeSeriesCrossValidationAsync();
+                var kFoldCV = await crossValService.PerformKFoldCrossValidationAsync();
+
+                // Save results
+                var cvReport = new
+                {
+                    TimeSeriesCV = timeSeriesCV,
+                    KFoldCV = kFoldCV,
+                    Recommendation = timeSeriesCV.AverageAUC > kFoldCV.AverageAUC
+                        ? "Use Time-Series CV results (better for temporal data)"
+                        : "Both methods show similar performance"
+                };
+
+                Directory.CreateDirectory("Reports");
+                var json = JsonSerializer.Serialize(cvReport, new JsonSerializerOptions { WriteIndented = true });
+                File.WriteAllText("Reports/cross_validation_report.json", json);
+            }
         }
 
-        if (!allValid)
-            Console.WriteLine("\n⚠️ Warning: Some series don't have exactly 10 bets. Adjust strategy parameters.");
+        if (args.Contains("--compare-strategies"))
+        {
+            var comparisonService = host.Services.GetRequiredService<IBettingStrategyComparisonService>();
 
-        DisplayRecommendations(recommendations);
-        SaveRecommendationsToFile(recommendations);
+            if (args.Contains("--measure-performance"))
+            {
+                Console.WriteLine("📊 Comparing all bet optimization strategies...\n");
+                var comparisonReport = await PerformanceHelper.MeasureAsync("Comparing Optimization Methods",
+                    () => comparisonService.CompareOptimizationMethodsAsync(8300, 9705));
+                Console.WriteLine(
+                    $"\n🏆 FINAL RECOMMENDATION: Use {comparisonReport.BestBySharpe} for best risk-adjusted returns");
+            }
+
+            else
+            {
+                Console.WriteLine("📊 Comparing all bet optimization strategies...\n");
+                var comparisonReport = await comparisonService.CompareOptimizationMethodsAsync(8300, 9705);
+                Console.WriteLine(
+                    $"\n🏆 FINAL RECOMMENDATION: Use {comparisonReport.BestBySharpe} for best risk-adjusted returns");
+            }
+        }
+
+        if (args.Contains("--backtest"))
+        {
+            //change method based on reports
+            Console.WriteLine("\n💰 Running betting strategy backtest...");
+            if (args.Contains("--measure-performance"))
+            {
+                var backtestReport = await PerformanceHelper.MeasureAsync("Betting backtest",
+                    () => evaluator.BacktestBettingStrategyAsync(5305, 9705,
+                        BetOptimizationMethodEnum.RiskAdjusted));
+                SaveBacktestReport(backtestReport);
+            }
+            else
+            {
+                var backtestReport =
+                    await evaluator.BacktestBettingStrategyAsync(5305, 9705, BetOptimizationMethodEnum.RiskAdjusted);
+                SaveBacktestReport(backtestReport);
+            }
+        }
+
+        if (args.Contains("--causal"))
+        {
+            if (args.Contains("--measure-performance"))
+            {
+                Console.WriteLine("🧬 Training causally-informed model with evaluation...");
+                await PerformanceHelper.MeasureAsync("Training and evaluating causally informed model",
+                    () => mlService.TrainAndEvaluateCausallyInformedModelAsync());
+                mlService.SaveModel("Models/foodclub_causal_model.zip");
+            }
+            else
+            {
+                Console.WriteLine("🧬 Training causally-informed model with evaluation...");
+                await mlService.TrainAndEvaluateCausallyInformedModelAsync();
+                mlService.SaveModel("Models/foodclub_causal_model.zip");
+            }
+        }
+
+        if (args.Contains("--measure-performance"))
+        {
+            Console.WriteLine("\n💰 Generating betting recommendations with performance measurement...");
+            var recommendations = await PerformanceHelper.MeasureAsync("Generate Recommendations",
+                () => pipeline.GenerateRecommendationsAsync(currentRound, BetOptimizationMethodEnum.RiskAdjusted));
+
+            DisplayRecommendations(recommendations);
+            SaveRecommendationsToFile(recommendations);
+        }
+        else
+        {
+            var recommendations =
+                await pipeline.GenerateRecommendationsAsync(currentRound, BetOptimizationMethodEnum.RiskAdjusted);
+            DisplayRecommendations(recommendations);
+            SaveRecommendationsToFile(recommendations);
+        } //change method based on reports
+    }
+
+    private static void SaveBacktestReport(BettingPerformanceReport report)
+    {
+        Directory.CreateDirectory("Reports");
+        var fileName = Path.Combine("Reports", $"backtest_{DateTime.UtcNow:yyyyMMdd_HHmmss}.json");
+
+        var json = JsonSerializer.Serialize(report, new JsonSerializerOptions { WriteIndented = true });
+        File.WriteAllText(fileName, json);
+
+        Console.WriteLine($"\n📄 Backtest report saved to {fileName}");
     }
 
     private static void DisplayRecommendations(DailyBettingRecommendations recommendations)
@@ -81,7 +292,7 @@ internal class Program
 
         foreach (var series in recommendations.BetSeries)
         {
-            Console.WriteLine($"\n🎯 {series.Name.ToUpper()} STRATEGY ({series.RiskLevel})");
+            Console.WriteLine($"\n🎯 {series.Name.ToUpper()} STRATEGY ({series.RiskLevelEnum})");
             Console.WriteLine($"   {series.Description}");
             Console.WriteLine("   ─────────────────────────────────────────────────");
 

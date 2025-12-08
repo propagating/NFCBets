@@ -1,6 +1,4 @@
-using NFCBets.Services.Models;
-
-namespace NFCBets.Services;
+namespace NFCBets.Services.Models;
 
 // Add ArenasCovered property to Bet class
 public class Bet

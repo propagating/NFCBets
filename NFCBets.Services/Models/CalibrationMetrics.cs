@@ -1,4 +1,4 @@
-namespace NFCBets.Services;
+namespace NFCBets.Services.Models;
 
 public class CalibrationMetrics
 {

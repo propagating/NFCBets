@@ -11,7 +11,9 @@
           "Microsoft.Extensions.Logging.Abstractions": "10.0.0",
           "Microsoft.ML": "5.0.0",
           "Microsoft.ML.LightGbm": "5.0.0",
-          "NFCBets.Repository": "1.0.0"
+          "NFCBets.Causal": "1.0.0",
+          "NFCBets.Repository": "1.0.0",
+          "NFCBets.Utilities": "1.0.0"
         },
         "runtime": {
           "NFCBets.Services.dll": {}
@@ -721,6 +723,18 @@
           }
         }
       },
+      "NFCBets.Causal/1.0.0": {
+        "dependencies": {
+          "NFCBets.EF": "1.0.0",
+          "NFCBets.Utilities": "1.0.0"
+        },
+        "runtime": {
+          "NFCBets.Causal.dll": {
+            "assemblyVersion": "1.0.0.0",
+            "fileVersion": "1.0.0.0"
+          }
+        }
+      },
       "NFCBets.EF/1.0.0": {
         "dependencies": {
           "Microsoft.EntityFrameworkCore.SqlServer": "10.0.0"
@@ -738,6 +752,17 @@
         },
         "runtime": {
           "NFCBets.Repository.dll": {
+            "assemblyVersion": "1.0.0.0",
+            "fileVersion": "1.0.0.0"
+          }
+        }
+      },
+      "NFCBets.Utilities/1.0.0": {
+        "dependencies": {
+          "NFCBets.EF": "1.0.0"
+        },
+        "runtime": {
+          "NFCBets.Utilities.dll": {
             "assemblyVersion": "1.0.0.0",
             "fileVersion": "1.0.0.0"
           }
@@ -1059,12 +1084,22 @@
       "path": "system.security.cryptography.protecteddata/9.0.4",
       "hashPath": "system.security.cryptography.protecteddata.9.0.4.nupkg.sha512"
     },
+    "NFCBets.Causal/1.0.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    },
     "NFCBets.EF/1.0.0": {
       "type": "project",
       "serviceable": false,
       "sha512": ""
     },
     "NFCBets.Repository/1.0.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    },
+    "NFCBets.Utilities/1.0.0": {
       "type": "project",
       "serviceable": false,
       "sha512": ""
