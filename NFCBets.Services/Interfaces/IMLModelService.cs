@@ -7,7 +7,7 @@ public interface IMlModelService
     Task TrainModelAsync();
     Task TrainAndEvaluateModelAsync();
     Task TrainAndEvaluateCausallyInformedModelAsync(); // New method
-    Task<List<PiratePrediction>> PredictAsync(List<PirateFeatureRecord> features);
+    Task<List<PiratePrediction>> PredictAsync(List<PirateFeatureRecord> features, bool useCache = true);
     void SaveModel(string path);
     void LoadModel(string path);
 }

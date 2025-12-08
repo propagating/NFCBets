@@ -4,7 +4,7 @@ namespace NFCBets.Evaluation.Models;
 
 public class OptimizationMethodResults
 {
-    public BetOptimizationMethod Method { get; set; }
+    public BetOptimizationMethodEnum MethodEnum { get; set; }
     public double OverallROI { get; set; }
     public double SharpeRatio { get; set; }
     public double SortinoRatio { get; set; }

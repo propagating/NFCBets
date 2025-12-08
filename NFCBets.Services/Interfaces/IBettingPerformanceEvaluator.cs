@@ -6,7 +6,7 @@ namespace NFCBets.Services.Interfaces;
 public interface IBettingPerformanceEvaluator
 {
     Task<BettingPerformanceReport> BacktestBettingStrategyAsync(int startRound, int endRound,
-        BetOptimizationMethod method);
+        BetOptimizationMethodEnum methodEnum);
 
     Task<List<int>> FindRoundsWithMultipleWinnersAsync(int startRound, int endRound);
 }

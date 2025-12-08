@@ -5,6 +5,6 @@ namespace NFCBets.Services.Interfaces;
 
 public interface IBettingStrategyService
 {
-    List<BetSeries> GenerateBetSeries(List<PiratePrediction> predictions, BetOptimizationMethod method);
-    List<BetSeries> GenerateBetSeriesParallel(List<PiratePrediction> predictions, BetOptimizationMethod method);
+    List<BetSeries> GenerateBetSeries(List<PiratePrediction> predictions, BetOptimizationMethodEnum methodEnum);
+    List<BetSeries> GenerateBetSeriesParallel(List<PiratePrediction> predictions, BetOptimizationMethodEnum methodEnum);
 }

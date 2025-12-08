@@ -6,4 +6,8 @@
         <Nullable>enable</Nullable>
     </PropertyGroup>
 
+    <ItemGroup>
+      <ProjectReference Include="..\NFCBets.EF\NFCBets.EF.csproj" />
+    </ItemGroup>
+
 </Project>

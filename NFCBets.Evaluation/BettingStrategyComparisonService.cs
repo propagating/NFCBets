@@ -34,11 +34,11 @@ public class BettingStrategyComparisonService : IBettingStrategyComparisonServic
 
         var methods = new[]
         {
-            BetOptimizationMethod.RawEV,
-            BetOptimizationMethod.Kelly,
-            BetOptimizationMethod.ConsistencyWeighted,
-            BetOptimizationMethod.RiskAdjusted,
-            BetOptimizationMethod.CostAdjusted
+            BetOptimizationMethodEnum.RawEV,
+            BetOptimizationMethodEnum.Kelly,
+            BetOptimizationMethodEnum.ConsistencyWeighted,
+            BetOptimizationMethodEnum.RiskAdjusted,
+            BetOptimizationMethodEnum.CostAdjusted
         };
 
         var comparisonReport = new StrategyComparisonReport
@@ -77,7 +77,7 @@ public class BettingStrategyComparisonService : IBettingStrategyComparisonServic
     }
 
     private async Task<OptimizationMethodResults> BacktestOptimizationMethodAsync(int startRound, int endRound,
-        BetOptimizationMethod method)
+        BetOptimizationMethodEnum methodEnum)
     {
         var dailyResults = new List<DailyMethodResult>();
 
@@ -87,8 +87,9 @@ public class BettingStrategyComparisonService : IBettingStrategyComparisonServic
             var features = await _featureService.CreateFeaturesForRoundAsync(roundId);
             if (!features.Any()) continue;
 
-            var predictions = await _mlService.PredictAsync(features);
-            var betSeries = _bettingService.GenerateBetSeriesParallel(predictions, method);
+            Console.WriteLine($"   Backtesting round {roundId} with {methodEnum}...");
+            var predictions = await _mlService.PredictAsync(features, false);
+            var betSeries = _bettingService.GenerateBetSeriesParallel(predictions, methodEnum);
 
             var actualWinners = await _context.RoundResults
                 .Where(rr => rr.RoundId == roundId && rr.IsWinner)
@@ -136,7 +137,7 @@ public class BettingStrategyComparisonService : IBettingStrategyComparisonServic
 
         return new OptimizationMethodResults
         {
-            Method = method,
+            MethodEnum = methodEnum,
             OverallROI = totalCost > 0 ? netProfit / totalCost : 0,
             SharpeRatio = CalculateSharpe(dailyROIs),
             SortinoRatio = CalculateSortino(dailyROIs),

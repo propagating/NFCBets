@@ -26,7 +26,7 @@ public class DailyBettingPipeline : IDailyBettingPipeline
     }
 
     public async Task<DailyBettingRecommendations> GenerateRecommendationsAsync(int roundId,
-        BetOptimizationMethod method = BetOptimizationMethod.ConsistencyWeighted)
+        BetOptimizationMethodEnum methodEnum = BetOptimizationMethodEnum.ConsistencyWeighted)
     {
         Console.WriteLine($"🎯 Generating betting recommendations for Round {roundId}");
 
@@ -55,7 +55,7 @@ public class DailyBettingPipeline : IDailyBettingPipeline
 
         // Step 3: Generate bet series (SEQUENTIAL - no DbContext needed)
         Console.WriteLine("💰 Step 3: Generating betting strategies...");
-        var betSeries = _bettingService.GenerateBetSeriesParallel(predictions, method);
+        var betSeries = _bettingService.GenerateBetSeriesParallel(predictions, methodEnum);
 
         var recommendations = new DailyBettingRecommendations
         {

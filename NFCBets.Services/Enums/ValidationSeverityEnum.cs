@@ -1,10 +1,9 @@
 namespace NFCBets.Services.Enums;
 
-public enum RiskLevel
+public enum ValidationSeverityEnum
 {
     Low,
     Medium,
-    MediumHigh,
     High,
-    VeryHigh
+    Critical
 }

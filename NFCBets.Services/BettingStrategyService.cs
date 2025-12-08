@@ -15,23 +15,23 @@ public class BettingStrategyService : IBettingStrategyService
     }
 
     public List<BetSeries> GenerateBetSeries(List<PiratePrediction> predictions,
-        BetOptimizationMethod method = BetOptimizationMethod.ConsistencyWeighted)
+        BetOptimizationMethodEnum methodEnum = BetOptimizationMethodEnum.ConsistencyWeighted)
     {
-        Console.WriteLine($"💰 Generating betting strategies using {method} optimization...");
+        Console.WriteLine($"💰 Generating betting strategies using {methodEnum} optimization...");
 
         var series = new List<BetSeries>
         {
-            GenerateConservativeSeriesOptimized(predictions, method),
-            GenerateBalancedSeriesOptimized(predictions, method),
-            GenerateModerateSeriesOptimized(predictions, method),
-            GenerateAggressiveSeriesOptimized(predictions, method),
-            GenerateHighRiskSeriesOptimized(predictions, method)
+            GenerateConservativeSeriesOptimized(predictions, methodEnum),
+            GenerateBalancedSeriesOptimized(predictions, methodEnum),
+            GenerateModerateSeriesOptimized(predictions, methodEnum),
+            GenerateAggressiveSeriesOptimized(predictions, methodEnum),
+            GenerateHighRiskSeriesOptimized(predictions, methodEnum)
         };
 
         // Validate unique bets
         foreach (var s in series)
         {
-            if (s.Bets.Count < 10) s.Bets = EnsureMinimumBets(s.Bets, predictions, s.RiskLevel, method);
+            if (s.Bets.Count < 10) s.Bets = EnsureMinimumBets(s.Bets, predictions, s.RiskLevelEnum, methodEnum);
             s.Bets = EnsureUniqueBets(s.Bets);
         }
 
@@ -42,15 +42,15 @@ public class BettingStrategyService : IBettingStrategyService
 
     // OPTIMIZATION: Parallel series generation with task batching
     public List<BetSeries> GenerateBetSeriesParallel(List<PiratePrediction> predictions,
-        BetOptimizationMethod method = BetOptimizationMethod.ConsistencyWeighted)
+        BetOptimizationMethodEnum methodEnum = BetOptimizationMethodEnum.ConsistencyWeighted)
     {
         var seriesTasks = new[]
         {
-            Task.Run(() => GenerateConservativeSeriesOptimized(predictions, method)),
-            Task.Run(() => GenerateBalancedSeriesOptimized(predictions, method)),
-            Task.Run(() => GenerateModerateSeriesOptimized(predictions, method)),
-            Task.Run(() => GenerateAggressiveSeriesOptimized(predictions, method)),
-            Task.Run(() => GenerateHighRiskSeriesOptimized(predictions, method))
+            Task.Run(() => GenerateConservativeSeriesOptimized(predictions, methodEnum)),
+            Task.Run(() => GenerateBalancedSeriesOptimized(predictions, methodEnum)),
+            Task.Run(() => GenerateModerateSeriesOptimized(predictions, methodEnum)),
+            Task.Run(() => GenerateAggressiveSeriesOptimized(predictions, methodEnum)),
+            Task.Run(() => GenerateHighRiskSeriesOptimized(predictions, methodEnum))
         };
 
         var series = Task.WhenAll(seriesTasks).Result;
@@ -58,7 +58,7 @@ public class BettingStrategyService : IBettingStrategyService
         // Validate in parallel
         Parallel.ForEach(series, s =>
         {
-            if (s.Bets.Count < 10) s.Bets = EnsureMinimumBets(s.Bets, predictions, s.RiskLevel, method);
+            if (s.Bets.Count < 10) s.Bets = EnsureMinimumBets(s.Bets, predictions, s.RiskLevelEnum, methodEnum);
             s.Bets = EnsureUniqueBets(s.Bets);
         });
 
@@ -90,7 +90,7 @@ public class BettingStrategyService : IBettingStrategyService
         return new BetSeries
         {
             Name = "Conservative",
-            RiskLevel = RiskLevel.Low,
+            RiskLevelEnum = RiskLevelEnum.Low,
             Bets = bets,
             Description = "High probability picks (>50% win chance)"
         };
@@ -114,7 +114,7 @@ public class BettingStrategyService : IBettingStrategyService
         return new BetSeries
         {
             Name = "Balanced",
-            RiskLevel = RiskLevel.Medium,
+            RiskLevelEnum = RiskLevelEnum.Medium,
             Bets = bets,
             Description = "Mix of safe and moderate picks (>25% win chance)"
         };
@@ -136,7 +136,7 @@ public class BettingStrategyService : IBettingStrategyService
         return new BetSeries
         {
             Name = "Moderate",
-            RiskLevel = RiskLevel.MediumHigh,
+            RiskLevelEnum = RiskLevelEnum.MediumHigh,
             Bets = bets,
             Description = "Higher payout potential (>15% win chance)"
         };
@@ -159,7 +159,7 @@ public class BettingStrategyService : IBettingStrategyService
         return new BetSeries
         {
             Name = "Aggressive",
-            RiskLevel = RiskLevel.High,
+            RiskLevelEnum = RiskLevelEnum.High,
             Bets = bets,
             Description = "Maximum EV picks with positive expected value"
         };
@@ -181,7 +181,7 @@ public class BettingStrategyService : IBettingStrategyService
         return new BetSeries
         {
             Name = "High Risk / High Reward",
-            RiskLevel = RiskLevel.VeryHigh,
+            RiskLevelEnum = RiskLevelEnum.VeryHigh,
             Bets = bets,
             Description = "Maximum payout combinations, all 5 arenas, highest odds"
         };
@@ -442,8 +442,8 @@ public class BettingStrategyService : IBettingStrategyService
         return combinedProbability * totalPayout - 1.0;
     }
 
-    private List<Bet> EnsureMinimumBets(List<Bet> existingBets, List<PiratePrediction> predictions, RiskLevel riskLevel,
-        BetOptimizationMethod method)
+    private List<Bet> EnsureMinimumBets(List<Bet> existingBets, List<PiratePrediction> predictions, RiskLevelEnum riskLevelEnum,
+        BetOptimizationMethodEnum methodEnum)
     {
         var bets = new List<Bet>(existingBets);
         var existingCombinations = new HashSet<string>(bets.Select(GetBetSignature));
@@ -453,20 +453,20 @@ public class BettingStrategyService : IBettingStrategyService
             .ToDictionary(g => g.Key, g => g.OrderByDescending(p => p.WinProbability).Take(5).ToList());
 
         var needed = 10 - bets.Count;
-        var (minPirates, maxPirates) = riskLevel switch
+        var (minPirates, maxPirates) = riskLevelEnum switch
         {
-            RiskLevel.Low => (1, 3),
-            RiskLevel.Medium => (1, 4),
-            RiskLevel.MediumHigh => (2, 5),
-            RiskLevel.High => (3, 5),
-            RiskLevel.VeryHigh => (4, 5),
+            RiskLevelEnum.Low => (1, 3),
+            RiskLevelEnum.Medium => (1, 4),
+            RiskLevelEnum.MediumHigh => (2, 5),
+            RiskLevelEnum.High => (3, 5),
+            RiskLevelEnum.VeryHigh => (4, 5),
             _ => (1, 5)
         };
 
         var additionalBets = GenerateBetCombinationsOptimized(allPicks, minPirates, maxPirates, 5000);
 
         // Sort by the specified method
-        var sortedAdditionalBets = SortBetsByMethod(additionalBets, method);
+        var sortedAdditionalBets = SortBetsByMethod(additionalBets, methodEnum);
 
         foreach (var bet in sortedAdditionalBets)
         {
@@ -507,57 +507,57 @@ public class BettingStrategyService : IBettingStrategyService
     // Optimized series generation
 
     private BetSeries GenerateConservativeSeriesOptimized(List<PiratePrediction> predictions,
-        BetOptimizationMethod method)
+        BetOptimizationMethodEnum methodEnum)
     {
         var safePicks = PreFilterPirates(predictions, 2, 0.5f);
         var combinations = GenerateBetCombinationsOptimized(safePicks, 1, 3, 5000);
 
         // Sort by risk-adjusted metric
-        var sortedBets = SortBetsByMethod(combinations, method);
+        var sortedBets = SortBetsByMethod(combinations, methodEnum);
 
         return new BetSeries
         {
             Name = "Conservative",
-            RiskLevel = RiskLevel.Low,
+            RiskLevelEnum = RiskLevelEnum.Low,
             Bets = sortedBets.Take(10).ToList(),
-            Description = $"High probability picks (>50% win chance), optimized by {method}"
+            Description = $"High probability picks (>50% win chance), optimized by {methodEnum}"
         };
     }
 
-    private BetSeries GenerateBalancedSeriesOptimized(List<PiratePrediction> predictions, BetOptimizationMethod method)
+    private BetSeries GenerateBalancedSeriesOptimized(List<PiratePrediction> predictions, BetOptimizationMethodEnum methodEnum)
     {
         var picks = PreFilterPirates(predictions, 5, 0.25f);
         var combinations = GenerateBetCombinationsOptimized(picks, 1, 4, 5000);
 
-        var sortedBets = SortBetsByMethod(combinations, method);
+        var sortedBets = SortBetsByMethod(combinations, methodEnum);
 
         return new BetSeries
         {
             Name = "Balanced",
-            RiskLevel = RiskLevel.Medium,
+            RiskLevelEnum = RiskLevelEnum.Medium,
             Bets = sortedBets.Take(10).ToList(),
-            Description = $"Mix of safe and moderate picks, optimized by {method}"
+            Description = $"Mix of safe and moderate picks, optimized by {methodEnum}"
         };
     }
 
-    private BetSeries GenerateModerateSeriesOptimized(List<PiratePrediction> predictions, BetOptimizationMethod method)
+    private BetSeries GenerateModerateSeriesOptimized(List<PiratePrediction> predictions, BetOptimizationMethodEnum methodEnum)
     {
         var picks = PreFilterPirates(predictions, 5, 0.15f);
         var combinations = GenerateBetCombinationsOptimized(picks, 1, 5, 5000);
 
-        var sortedBets = SortBetsByMethod(combinations, method);
+        var sortedBets = SortBetsByMethod(combinations, methodEnum);
 
         return new BetSeries
         {
             Name = "Moderate",
-            RiskLevel = RiskLevel.MediumHigh,
+            RiskLevelEnum = RiskLevelEnum.MediumHigh,
             Bets = sortedBets.Take(10).ToList(),
-            Description = $"Higher payout potential, optimized by {method}"
+            Description = $"Higher payout potential, optimized by {methodEnum}"
         };
     }
 
     private BetSeries GenerateAggressiveSeriesOptimized(List<PiratePrediction> predictions,
-        BetOptimizationMethod method)
+        BetOptimizationMethodEnum methodEnum)
     {
         var picks = predictions
             .Where(p => CalculateEV(p) > 0)
@@ -566,18 +566,18 @@ public class BettingStrategyService : IBettingStrategyService
 
         var combinations = GenerateBetCombinationsOptimized(picks, 1, 5, 5000);
 
-        var sortedBets = SortBetsByMethod(combinations, method);
+        var sortedBets = SortBetsByMethod(combinations, methodEnum);
 
         return new BetSeries
         {
             Name = "Aggressive",
-            RiskLevel = RiskLevel.High,
+            RiskLevelEnum = RiskLevelEnum.High,
             Bets = sortedBets.Take(10).ToList(),
-            Description = $"Maximum EV with positive expected value, optimized by {method}"
+            Description = $"Maximum EV with positive expected value, optimized by {methodEnum}"
         };
     }
 
-    private BetSeries GenerateHighRiskSeriesOptimized(List<PiratePrediction> predictions, BetOptimizationMethod method)
+    private BetSeries GenerateHighRiskSeriesOptimized(List<PiratePrediction> predictions, BetOptimizationMethodEnum methodEnum)
     {
         var picks = predictions
             .GroupBy(p => p.ArenaId)
@@ -586,44 +586,44 @@ public class BettingStrategyService : IBettingStrategyService
         var combinations = GenerateBetCombinationsOptimized(picks, 1, 5, 5000);
 
         // For high risk, still prioritize payout but consider consistency
-        var sortedBets = method == BetOptimizationMethod.RawEV
+        var sortedBets = methodEnum == BetOptimizationMethodEnum.RawEV
             ? combinations.OrderByDescending(c => c.TotalPayout).ToList()
-            : SortBetsByMethod(combinations, method);
+            : SortBetsByMethod(combinations, methodEnum);
 
         return new BetSeries
         {
             Name = "High Risk / High Reward",
-            RiskLevel = RiskLevel.VeryHigh,
+            RiskLevelEnum = RiskLevelEnum.VeryHigh,
             Bets = sortedBets.Take(10).ToList(),
-            Description = $"Maximum payout combinations, optimized by {method}"
+            Description = $"Maximum payout combinations, optimized by {methodEnum}"
         };
     }
 
-    private List<Bet> SortBetsByMethod(List<Bet> bets, BetOptimizationMethod method)
+    private List<Bet> SortBetsByMethod(List<Bet> bets, BetOptimizationMethodEnum methodEnum)
     {
-        return method switch
+        return methodEnum switch
         {
-            BetOptimizationMethod.RawEV => bets.OrderByDescending(b => b.ExpectedValue).ToList(),
+            BetOptimizationMethodEnum.RawEV => bets.OrderByDescending(b => b.ExpectedValue).ToList(),
 
-            BetOptimizationMethod.Kelly => bets
+            BetOptimizationMethodEnum.Kelly => bets
                 .Select(b => new { Bet = b, Score = _riskService.CalculateKellyAdjustedEV(b) })
                 .OrderByDescending(x => x.Score)
                 .Select(x => x.Bet)
                 .ToList(),
 
-            BetOptimizationMethod.ConsistencyWeighted => bets
+            BetOptimizationMethodEnum.ConsistencyWeighted => bets
                 .Select(b => new { Bet = b, Score = _riskService.CalculateConsistencyWeightedEV(b, 0.6) })
                 .OrderByDescending(x => x.Score)
                 .Select(x => x.Bet)
                 .ToList(),
 
-            BetOptimizationMethod.RiskAdjusted => bets
+            BetOptimizationMethodEnum.RiskAdjusted => bets
                 .Select(b => new { Bet = b, Score = _riskService.CalculateRiskAdjustedReturn(b) })
                 .OrderByDescending(x => x.Score)
                 .Select(x => x.Bet)
                 .ToList(),
 
-            BetOptimizationMethod.CostAdjusted => bets
+            BetOptimizationMethodEnum.CostAdjusted => bets
                 .Select(b => new { Bet = b, Score = _riskService.CalculateCostAdjustedEV(b) })
                 .OrderByDescending(x => x.Score)
                 .Select(x => x.Bet)

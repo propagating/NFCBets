@@ -758,6 +758,9 @@
         }
       },
       "NFCBets.Utilities/1.0.0": {
+        "dependencies": {
+          "NFCBets.EF": "1.0.0"
+        },
         "runtime": {
           "NFCBets.Utilities.dll": {
             "assemblyVersion": "1.0.0.0",

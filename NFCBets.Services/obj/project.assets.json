@@ -1177,6 +1177,9 @@
       "NFCBets.Utilities/1.0.0": {
         "type": "project",
         "framework": ".NETCoreApp,Version=v10.0",
+        "dependencies": {
+          "NFCBets.EF": "1.0.0"
+        },
         "compile": {
           "bin/placeholder/NFCBets.Utilities.dll": {}
         },

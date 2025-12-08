@@ -151,4 +151,31 @@ public static class MathUtilities
         if (absTStat > 1.645) return 0.10;
         return 0.20;
     }
+
+    public static double CalculateCorrelation(List<double> x, List<double> y)
+    {
+        if (x.Count != y.Count || x.Count == 0)
+            return 0;
+
+        var meanX = x.Average();
+        var meanY = y.Average();
+
+        double sumProduct = 0;
+        double sumXSquared = 0;
+        double sumYSquared = 0;
+
+        for (var i = 0; i < x.Count; i++)
+        {
+            var xDiff = x[i] - meanX;
+            var yDiff = y[i] - meanY;
+            sumProduct += xDiff * yDiff;
+            sumXSquared += xDiff * xDiff;
+            sumYSquared += yDiff * yDiff;
+        }
+
+        if (sumXSquared == 0 || sumYSquared == 0)
+            return 0;
+
+        return sumProduct / Math.Sqrt(sumXSquared * sumYSquared);
+    }
 }

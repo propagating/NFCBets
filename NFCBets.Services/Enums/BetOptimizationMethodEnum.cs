@@ -1,6 +1,6 @@
 namespace NFCBets.Services.Enums;
 
-public enum BetOptimizationMethod
+public enum BetOptimizationMethodEnum
 {
     RawEV,
     Kelly,

@@ -31,7 +31,7 @@ public class BettingPerformanceEvaluator : IBettingPerformanceEvaluator
     }
 
     public async Task<BettingPerformanceReport> BacktestBettingStrategyAsync(int startRound, int endRound,
-        BetOptimizationMethod method = BetOptimizationMethod.ConsistencyWeighted)
+        BetOptimizationMethodEnum methodEnum = BetOptimizationMethodEnum.ConsistencyWeighted)
     {
         Console.WriteLine($"🔄 Backtesting betting strategy from round {startRound} to {endRound}...");
 
@@ -53,7 +53,7 @@ public class BettingPerformanceEvaluator : IBettingPerformanceEvaluator
             if (!features.Any()) continue;
 
             var predictions = await _mlService.PredictAsync(features);
-            var betSeries = _bettingService.GenerateBetSeriesParallel(predictions, method);
+            var betSeries = _bettingService.GenerateBetSeriesParallel(predictions, methodEnum);
 
             // Get actual winners - FIXED: Handle duplicates
             var winnerResults = await _context.RoundResults
@@ -295,6 +295,8 @@ public class BettingPerformanceEvaluator : IBettingPerformanceEvaluator
         Console.WriteLine($"   Sharpe Ratio: {bestStrategy.SharpeRatio:F2}");
         Console.WriteLine($"   ROI: {bestStrategy.ROI:+P2;-P2}");
     }
+    
+    
 }
 
 // Result classes

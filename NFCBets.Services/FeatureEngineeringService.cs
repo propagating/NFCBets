@@ -24,13 +24,15 @@ public class FeatureEngineeringService : IFeatureEngineeringService
         var features = new List<PirateFeatureRecord>();
 
         // OPTIMIZATION 1: Single query for all placements
+        // EXCLUDE 1:1 odds at query level
         var placements = await _context.RoundPiratePlacements
-            .Where(rpp => rpp.RoundId == roundId)
+            .Where(rpp => rpp.RoundId == roundId && 
+                          (rpp.CurrentOdds ?? rpp.StartingOdds) > 1) // ✅ Exclude 1:1 odds
             .ToListAsync();
 
         if (!placements.Any()) return features;
 
-        // OPTIMIZATION 2: Get all pirate IDs involved
+        // Get all pirate IDs involved
         var pirateIds = placements
             .Where(p => p.PirateId.HasValue)
             .Select(p => p.PirateId!.Value)
@@ -91,99 +93,99 @@ public class FeatureEngineeringService : IFeatureEngineeringService
     }
 
     /// OPTIMIZED: CreateTrainingDataAsync
-    public async Task<List<PirateFeatureRecord>> CreateTrainingDataAsync(int maxRounds = 4000)
-    {
-        Console.WriteLine("📊 Creating training data with optimized batch loading...");
+public async Task<List<PirateFeatureRecord>> CreateTrainingDataAsync(int maxRounds = 4000)
+{
+    Console.WriteLine("📊 Creating training data (excluding 1:1 odds placeholders)...");
 
-        var features = new List<PirateFeatureRecord>();
+    var features = new List<PirateFeatureRecord>();
 
-        // Get all completed rounds
-        var completedRounds = await _context.RoundResults
+    // Get all completed rounds
+    var completedRounds = await _context.RoundResults
+        .Where(rr => rr.IsComplete && rr.RoundId.HasValue)
+        .Select(rr => rr.RoundId!.Value)
+        .Distinct()
+        .OrderBy(r => r)
+        .Take(maxRounds)
+        .ToListAsync();
+
+    Console.WriteLine($"Processing {completedRounds.Count} rounds...");
+
+    // Load ALL pirates once
+    _pirateCache = await _context.Pirates
+        .ToDictionaryAsync(p => p.PirateId, p => p);
+
+    // Load ALL historical results once
+    _allHistoricalResultsCache = (await _context.RoundResults
             .Where(rr => rr.IsComplete && rr.RoundId.HasValue)
-            .Select(rr => rr.RoundId!.Value)
-            .Distinct()
-            .OrderBy(r => r)
-            .Take(maxRounds)
+            .ToListAsync())
+        .GroupBy(rr => rr.PirateId)
+        .ToDictionary(g => g.Key, g => g.ToList());
+
+    // Process in batches
+    const int batchSize = 200;
+
+    for (var i = 0; i < completedRounds.Count; i += batchSize)
+    {
+        var batchRounds = completedRounds.Skip(i).Take(batchSize).ToList();
+
+        // EXCLUDE 1:1 odds at query level
+        var batchPlacements = await _context.RoundPiratePlacements
+            .Where(rpp => batchRounds.Contains(rpp.RoundId!.Value) &&
+                         (rpp.CurrentOdds ?? rpp.StartingOdds) > 1) // ✅ Exclude 1:1 odds
             .ToListAsync();
 
-        Console.WriteLine($"Processing {completedRounds.Count} rounds...");
+        var batchResults = await _context.RoundResults
+            .Where(rr => batchRounds.Contains(rr.RoundId!.Value))
+            .ToListAsync();
 
-        // OPTIMIZATION 1: Load ALL pirates once
-        _pirateCache = await _context.Pirates
-            .ToDictionaryAsync(p => p.PirateId, p => p);
-
-        // OPTIMIZATION 2: Load ALL historical results once
-        _allHistoricalResultsCache = (await _context.RoundResults
-                .Where(rr => rr.IsComplete && rr.RoundId.HasValue)
-                .ToListAsync())
-            .GroupBy(rr => rr.PirateId)
-            .ToDictionary(g => g.Key, g => g.ToList());
-
-        // OPTIMIZATION 3: Process in batches
-        const int batchSize = 200;
-
-        for (var i = 0; i < completedRounds.Count; i += batchSize)
+        // Process each round in batch
+        foreach (var roundId in batchRounds)
         {
-            var batchRounds = completedRounds.Skip(i).Take(batchSize).ToList();
+            var roundPlacements = batchPlacements.Where(p => p.RoundId == roundId).ToList();
+            var roundResults = batchResults.Where(r => r.RoundId == roundId).ToList();
 
-            // Load all placements and results for batch
-            var batchPlacements = await _context.RoundPiratePlacements
-                .Where(rpp => batchRounds.Contains(rpp.RoundId!.Value))
-                .ToListAsync();
-
-            var batchResults = await _context.RoundResults
-                .Where(rr => batchRounds.Contains(rr.RoundId!.Value))
-                .ToListAsync();
-
-            // Process each round in batch
-            foreach (var roundId in batchRounds)
+            foreach (var placement in roundPlacements)
             {
-                var roundPlacements = batchPlacements.Where(p => p.RoundId == roundId).ToList();
-                var roundResults = batchResults.Where(r => r.RoundId == roundId).ToList();
+                if (!placement.PirateId.HasValue || !placement.ArenaId.HasValue) continue;
 
-                foreach (var placement in roundPlacements)
-                {
-                    if (!placement.PirateId.HasValue || !placement.ArenaId.HasValue) continue;
+                var result = roundResults.FirstOrDefault(rr =>
+                    rr.PirateId == placement.PirateId.Value &&
+                    rr.ArenaId == placement.ArenaId.Value);
 
-                    var result = roundResults.FirstOrDefault(rr =>
-                        rr.PirateId == placement.PirateId.Value &&
-                        rr.ArenaId == placement.ArenaId.Value);
+                // Get rivals from batch data (no DB query)
+                var rivalsInArena = roundPlacements
+                    .Where(rpp => rpp.ArenaId == placement.ArenaId &&
+                                  rpp.PirateId != placement.PirateId &&
+                                  rpp.PirateId.HasValue)
+                    .Select(rpp => rpp.PirateId!.Value)
+                    .ToList();
 
-                    // Get rivals from batch data (no DB query)
-                    var rivalsInArena = roundPlacements
-                        .Where(rpp => rpp.ArenaId == placement.ArenaId &&
-                                      rpp.PirateId != placement.PirateId &&
-                                      rpp.PirateId.HasValue)
-                        .Select(rpp => rpp.PirateId!.Value)
-                        .ToList();
+                // Build features using cached data
+                var feature = BuildFeatureRecordOptimized(
+                    placement.PirateId.Value,
+                    placement.ArenaId.Value,
+                    roundId,
+                    placement,
+                    rivalsInArena,
+                    result?.IsWinner
+                );
 
-                    // Build features using cached data
-                    var feature = BuildFeatureRecordOptimized(
-                        placement.PirateId.Value,
-                        placement.ArenaId.Value,
-                        roundId,
-                        placement,
-                        rivalsInArena,
-                        result?.IsWinner
-                    );
-
-                    if (feature != null)
-                        features.Add(feature);
-                }
+                if (feature != null)
+                    features.Add(feature);
             }
-
-            if ((i + batchSize) % 1000 == 0)
-                Console.WriteLine(
-                    $"   Processed {Math.Min(i + batchSize, completedRounds.Count)}/{completedRounds.Count} rounds...");
         }
 
-        // Clear caches
-        _pirateCache = null;
-        _allHistoricalResultsCache = null;
-
-        Console.WriteLine($"✅ Generated {features.Count} training features");
-        return features;
+        if ((i + batchSize) % 1000 == 0)
+            Console.WriteLine($"   Processed {Math.Min(i + batchSize, completedRounds.Count)}/{completedRounds.Count} rounds...");
     }
+
+    // Clear caches
+    _pirateCache = null;
+    _allHistoricalResultsCache = null;
+
+    Console.WriteLine($"✅ Generated {features.Count} training features (1:1 odds excluded)");
+    return features;
+}
 
     private async Task<PirateFeatureRecord?> BuildFeatureRecordAsync(
         int pirateId,
@@ -250,14 +252,18 @@ public class FeatureEngineeringService : IFeatureEngineeringService
         var recentForm = GetRecentFormOptimized(historicalResults, 10);
         var rivalPerformance = GetRivalPerformanceOptimized(pirateId, rivalIds, roundId, historicalResults);
 
+        // NORMALIZE ODDS: Treat 1:1 as 2:1 (game minimum)
+        var normalizedStartingOdds = Math.Max(2, placement.StartingOdds);
+        var normalizedCurrentOdds = Math.Max(2, placement.CurrentOdds ?? placement.StartingOdds);
+
         return new PirateFeatureRecord
         {
             RoundId = roundId,
             ArenaId = arenaId,
             PirateId = pirateId,
             Position = placement.PirateSeatPosition ?? 0,
-            StartingOdds = placement.StartingOdds,
-            CurrentOdds = placement.CurrentOdds ?? placement.StartingOdds,
+            StartingOdds = normalizedStartingOdds, // ✅ Normalized
+            CurrentOdds = normalizedCurrentOdds, // ✅ Normalized
             FoodAdjustment = placement.PirateFoodAdjustment,
             Strength = pirate.Strength ?? 0,
             Weight = pirate.Weight ?? 0,

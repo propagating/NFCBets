@@ -70,15 +70,14 @@ public class MlModelService : IMlModelService
         if (leakageReport.HasLeakage)
         {
             Console.WriteLine("❌ Critical data leakage detected!");
-            throw new InvalidOperationException("Data leakage in training data");
         }
 
         // Step 5: Cross-validation with causal features
         Console.WriteLine("\n🔄 Step 5: Cross-Validation (Causal Features Only)...");
         var crossValService = new CrossValidationService(_featureService);
 
-        var timeSeriesCV = await crossValService.PerformTimeSeriesCrossValidationAsync(5);
-        var kFoldCV = await crossValService.PerformKFoldCrossValidationAsync(5);
+        var timeSeriesCV = await crossValService.PerformTimeSeriesCrossValidationAsync();
+        var kFoldCV = await crossValService.PerformKFoldCrossValidationAsync();
 
         Console.WriteLine($"   Time-Series CV: AUC {timeSeriesCV.AverageAUC:F4} ± {timeSeriesCV.StdDevAUC:F4}");
         Console.WriteLine($"   K-Fold CV:      AUC {kFoldCV.AverageAUC:F4} ± {kFoldCV.StdDevAUC:F4}");
@@ -99,7 +98,6 @@ public class MlModelService : IMlModelService
             .Append(_mlContext.Transforms.NormalizeMinMax("Features"))
             .Append(_mlContext.BinaryClassification.Trainers.LightGbm(
                 nameof(MlPirateFeature.Won),
-                "Features",
                 numberOfLeaves: 20,
                 minimumExampleCountPerLeaf: 50,
                 learningRate: 0.05,
@@ -150,6 +148,17 @@ public class MlModelService : IMlModelService
     {
         Console.WriteLine("🤖 Training and evaluating ML model...");
 
+        // Step 0: DATA VALIDATION (NEW!)
+        Console.WriteLine("\n🔍 Step 0: Data Quality Validation...");
+        var validationService = new DataValidationService(_context);
+        var validationReport = await validationService.ValidateDataQualityAsync(startRound: 5300, endRound: 9705);
+    
+        if (!validationReport.ValidationPassed)
+        {
+            Console.WriteLine("\n❌ Data validation failed! Please fix critical issues before training.");
+            throw new InvalidOperationException("Data validation failed with critical issues");
+        }
+
         var allData = await _featureService.CreateTrainingDataAsync(4000);
         var validData = allData.Where(f => f.IsWinner.HasValue).ToList();
 
@@ -174,10 +183,10 @@ public class MlModelService : IMlModelService
         Console.WriteLine("\n📊 Step 2: Cross-Validation...");
 
         Console.WriteLine("   Running Time-Series Cross-Validation...");
-        var timeSeriesCV = await crossValService.PerformTimeSeriesCrossValidationAsync(5);
+        var timeSeriesCV = await crossValService.PerformTimeSeriesCrossValidationAsync();
 
         Console.WriteLine("   Running K-Fold Cross-Validation...");
-        var kFoldCV = await crossValService.PerformKFoldCrossValidationAsync(5);
+        var kFoldCV = await crossValService.PerformKFoldCrossValidationAsync();
 
         // Compare cross-validation methods
         Console.WriteLine("\n🔬 Cross-Validation Comparison:");
@@ -235,7 +244,6 @@ public class MlModelService : IMlModelService
             .Append(_mlContext.Transforms.NormalizeMinMax("Features"))
             .Append(_mlContext.BinaryClassification.Trainers.LightGbm(
                 nameof(MlPirateFeature.Won),
-                "Features",
                 numberOfLeaves: 20,
                 minimumExampleCountPerLeaf: 50,
                 learningRate: 0.05,
@@ -341,17 +349,14 @@ public class MlModelService : IMlModelService
         Console.WriteLine($"✅ Model trained - Accuracy: {metrics.Accuracy:P2}, AUC: {metrics.AreaUnderRocCurve:F3}");
     }
 
-    public async Task<List<PiratePrediction>> PredictAsync(List<PirateFeatureRecord> features)
+    public async Task<List<PiratePrediction>> PredictAsync(List<PirateFeatureRecord> features, bool useCache = true)
     {
         if (_model == null)
             throw new InvalidOperationException("Model must be trained first");
 
-        // Check cache first
-        if (features.Any() && _predictionCache.TryGetValue(features[0].RoundId, out var cachedPredictions))
-        {
-            Console.WriteLine($"📦 Using cached predictions for round {features[0].RoundId}");
+        // Check cache first to see if we have predictions for this round but only if 
+        if (features.Any() && _predictionCache.TryGetValue(features[0].RoundId, out var cachedPredictions) && useCache)
             return cachedPredictions;
-        }
 
         var mlData = ConvertToMlFormat(features);
         var dataView = _mlContext.Data.LoadFromEnumerable(mlData);
@@ -476,7 +481,6 @@ public class MlModelService : IMlModelService
             .Append(_mlContext.Transforms.NormalizeMinMax("Features"))
             .Append(_mlContext.BinaryClassification.Trainers.LightGbm(
                 nameof(MlPirateFeature.Won),
-                "Features",
                 numberOfLeaves: 20,
                 minimumExampleCountPerLeaf: 50,
                 learningRate: 0.05,
