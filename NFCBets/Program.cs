@@ -19,6 +19,31 @@ internal class Program
 {
     private static async Task Main(string[] args)
     {
+        var startRound = 9700;
+        var currentRound = 9722;
+        var modelPath = "Models/foodclub_mp.cd.vd.r.e.cs.c.bt_model.zip";
+        
+        args = args.Length == 0
+            ? new[]
+            {
+                "--measure-performance",
+                //"--parallel", --not currently working properly for data collection
+                "--collect-data",
+                //"--force-collect" --recollects all data regardless of existing records,
+                "--validate-data",
+                "--retrain",
+                "--evaluate",
+                //"--cross-validate", --not needed if we are retraining and evaluating, availabe if we are not doing those things""
+                //"--force-cross-validate", --we can use this to force cross validation regardless of whether we're retraining or evaluating'"
+                "--compare-strategies",
+                "--causal",
+                "--backtest"
+            }
+            : args;
+    
+        var measurePerformance = args.Contains("--measure-performance");
+        
+        
         var host = Host.CreateDefaultBuilder(args)
             .ConfigureServices(services =>
             {
@@ -43,32 +68,44 @@ internal class Program
         var pipeline = host.Services.GetRequiredService<IDailyBettingPipeline>();
         var dataService = host.Services.GetRequiredService<IFoodClubDataService>();
 
-
-        var modelPath = "Models/foodclub_bt_cv_causal_betoptimization_model.zip";
-        var currentRound = 9706;
-        args = args.Length == 0
-            ? new[]
-            {
-                "--measure-performance",
-                "--validate-data",
-                "--collect-data",
-                "--causal",
-                "--backtest"
-            }
-            : args;
-
+        Console.WriteLine("🏴‍☠️ Welcome to the Food Club Betting Pipeline!");
         if (args.Contains("--collect-data"))
         {
-            Console.WriteLine("📥 Collecting historical Food Club data...");
-            if (args.Contains("--measure-performance"))
+            var forceCollect = args.Contains("--force-collect");
+            var useParallel = args.Contains("--parallel");
+            var endRound = currentRound;
+    
+            Console.WriteLine($"📥 Collecting historical Food Club data...");
+            Console.WriteLine($"   Force collect: {forceCollect}");
+            Console.WriteLine($"   Parallel: {useParallel}");
+            Console.WriteLine($"   Range: {startRound} to {endRound}");
+
+            if (measurePerformance)
             {
-                await PerformanceHelper.MeasureAsync("Collecting historical data",
-                    () => dataService.CollectRangeAsync(5300, currentRound, true));
+                Console.WriteLine("   Performance measurement enabled");
+                if (useParallel)
+                {
+                    Console.WriteLine("Dont' do this right now it's not working");
+                    await PerformanceHelper.MeasureAsync("Parallel data collection",
+                        () => dataService.CollectRangeParallelAsync(startRound, endRound, forceCollect, maxParallel: 10));
+                }
+                else
+                {
+                    await PerformanceHelper.MeasureAsync("Sequential data collection",
+                        () => dataService.CollectRangeAsync(startRound, endRound, forceCollect));
+                }
+            }
+
+            if (!useParallel)
+            {
+                await dataService.CollectRangeAsync(startRound, endRound, forceCollect);
             }
             else
             {
-                await dataService.CollectRangeAsync(5300, currentRound, true);
+                await dataService.CollectRangeParallelAsync(startRound, endRound, forceCollect, maxParallel: 10);
+                
             }
+
         }
 
         if (args.Contains("--validate-data"))
@@ -79,8 +116,8 @@ internal class Program
             if (args.Contains("--measure-performance"))
             {
                 var report = await PerformanceHelper.MeasureAsync("Validating data quality",
-                    () => validationService.ValidateDataQualityAsync(startRound: 5300, endRound: 9705));
-                
+                    () => validationService.ValidateDataQualityAsync(startRound, currentRound));
+
                 // Save report
                 Directory.CreateDirectory("Reports");
                 var fileName = Path.Combine("Reports", $"data_validation_{DateTime.UtcNow:yyyyMMdd_HHmmss}.json");
@@ -88,10 +125,10 @@ internal class Program
                 File.WriteAllText(fileName, json);
                 Console.WriteLine($"\n📄 Validation report saved to {fileName}");
             }
-            else 
+            else
             {
-                var report = await validationService.ValidateDataQualityAsync(startRound: 5300, endRound: 9705);
-    
+                var report = await validationService.ValidateDataQualityAsync(startRound, currentRound);
+
                 // Save report
                 Directory.CreateDirectory("Reports");
                 var fileName = Path.Combine("Reports", $"data_validation_{DateTime.UtcNow:yyyyMMdd_HHmmss}.json");
@@ -110,14 +147,14 @@ internal class Program
                 if (args.Contains("--measure-performance"))
                 {
                     await PerformanceHelper.MeasureAsync("Find Rounds with multiple winners",
-                        () => evaluator.FindRoundsWithMultipleWinnersAsync(5300, 9705));
+                        () => evaluator.FindRoundsWithMultipleWinnersAsync(startRound, currentRound));
                     await PerformanceHelper.MeasureAsync("Training and evaluating model",
                         () => mlService.TrainAndEvaluateModelAsync());
                     mlService.SaveModel(modelPath);
                 }
                 else
                 {
-                    await evaluator.FindRoundsWithMultipleWinnersAsync(5300, 9705);
+                    await evaluator.FindRoundsWithMultipleWinnersAsync(startRound, currentRound);
                     await mlService.TrainAndEvaluateModelAsync();
                     mlService.SaveModel(modelPath);
                 }
@@ -127,7 +164,7 @@ internal class Program
                 if (args.Contains("--measure-performance"))
                 {
                     await PerformanceHelper.MeasureAsync("Find Rounds with multiple winners",
-                        () => evaluator.FindRoundsWithMultipleWinnersAsync(5300, 9705));
+                        () => evaluator.FindRoundsWithMultipleWinnersAsync(startRound, currentRound));
                     await PerformanceHelper.MeasureAsync("Training model", mlService.TrainModelAsync);
                     mlService.SaveModel(modelPath);
                 }
@@ -203,7 +240,7 @@ internal class Program
             {
                 Console.WriteLine("📊 Comparing all bet optimization strategies...\n");
                 var comparisonReport = await PerformanceHelper.MeasureAsync("Comparing Optimization Methods",
-                    () => comparisonService.CompareOptimizationMethodsAsync(8300, 9705));
+                    () => comparisonService.CompareOptimizationMethodsAsync(startRound, currentRound));
                 Console.WriteLine(
                     $"\n🏆 FINAL RECOMMENDATION: Use {comparisonReport.BestBySharpe} for best risk-adjusted returns");
             }
@@ -211,7 +248,7 @@ internal class Program
             else
             {
                 Console.WriteLine("📊 Comparing all bet optimization strategies...\n");
-                var comparisonReport = await comparisonService.CompareOptimizationMethodsAsync(8300, 9705);
+                var comparisonReport = await comparisonService.CompareOptimizationMethodsAsync(startRound, currentRound);
                 Console.WriteLine(
                     $"\n🏆 FINAL RECOMMENDATION: Use {comparisonReport.BestBySharpe} for best risk-adjusted returns");
             }
@@ -224,14 +261,14 @@ internal class Program
             if (args.Contains("--measure-performance"))
             {
                 var backtestReport = await PerformanceHelper.MeasureAsync("Betting backtest",
-                    () => evaluator.BacktestBettingStrategyAsync(5305, 9705,
+                    () => evaluator.BacktestBettingStrategyAsync(startRound, currentRound,
                         BetOptimizationMethodEnum.RiskAdjusted));
                 SaveBacktestReport(backtestReport);
             }
             else
             {
                 var backtestReport =
-                    await evaluator.BacktestBettingStrategyAsync(5305, 9705, BetOptimizationMethodEnum.RiskAdjusted);
+                    await evaluator.BacktestBettingStrategyAsync(startRound, currentRound, BetOptimizationMethodEnum.RiskAdjusted);
                 SaveBacktestReport(backtestReport);
             }
         }
@@ -290,14 +327,33 @@ internal class Program
         Console.WriteLine("📌 Note: All odds shown are corrected to minimum 2:1");
         Console.WriteLine("═══════════════════════════════════════════════════\n");
 
+        if (!recommendations.BetSeries.Any())
+        {
+            Console.WriteLine("⚠️ No betting strategies generated!");
+            Console.WriteLine("   This may indicate:");
+            Console.WriteLine("   - No valid predictions available");
+            Console.WriteLine("   - All pirates filtered out (check for 1:1 odds)");
+            Console.WriteLine("   - Insufficient data for this round");
+            return;
+        }
+
         foreach (var series in recommendations.BetSeries)
         {
             Console.WriteLine($"\n🎯 {series.Name.ToUpper()} STRATEGY ({series.RiskLevelEnum})");
             Console.WriteLine($"   {series.Description}");
             Console.WriteLine("   ─────────────────────────────────────────────────");
 
-            for (var i = 0; i < series.Bets.Count; i++) Console.WriteLine($"   {i + 1,2}. {series.Bets[i]}");
+            // ✅ Safety check for empty bets
+            if (!series.Bets.Any())
+            {
+                Console.WriteLine("   ⚠️ No bets generated for this strategy");
+                continue;
+            }
 
+            for (var i = 0; i < series.Bets.Count; i++) 
+                Console.WriteLine($"   {i + 1,2}. {series.Bets[i]}");
+
+            // ✅ Only calculate if bets exist
             var totalEV = series.Bets.Sum(b => b.ExpectedValue);
             var avgEV = series.Bets.Average(b => b.ExpectedValue);
             Console.WriteLine("   ─────────────────────────────────────────────────");

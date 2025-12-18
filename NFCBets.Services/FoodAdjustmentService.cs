@@ -92,6 +92,54 @@ public class FoodAdjustmentService : IFoodAdjustmentService
     }
 
     /// <summary>
+    ///     Calculate food adjustments for entire arena at once
+    /// </summary>
+    public async Task<Dictionary<int, int>> CalculateFoodAdjustmentsBatchAsync(
+        int roundId, int arenaId, List<int> pirateIds)
+    {
+        var adjustments = new Dictionary<int, int>();
+
+        // Get served food categories once for the arena
+        var servedFoodIds = await _context.RoundFoodCourses
+            .Where(rfc => rfc.RoundId == roundId && rfc.ArenaId == arenaId)
+            .Select(rfc => rfc.FoodId)
+            .ToListAsync();
+
+        var servedCategories = await _context.FoodCategoryFoods
+            .Where(fcf => servedFoodIds.Contains(fcf.FoodId))
+            .Select(fcf => fcf.FoodCategoryId)
+            .Distinct()
+            .ToListAsync();
+
+        if (!servedCategories.Any())
+            return pirateIds.ToDictionary(id => id, id => 0);
+
+        // Batch load all preferences for all pirates
+        var preferences = await _context.FoodCategoryPreferences
+            .Where(fcp => pirateIds.Contains(fcp.PirateId) &&
+                          servedCategories.Contains(fcp.FoodCategoryId))
+            .GroupBy(fcp => fcp.PirateId)
+            .ToDictionaryAsync(g => g.Key, g => g.Count());
+
+        // Batch load all allergies for all pirates
+        var allergies = await _context.FoodCategoryAllergies
+            .Where(fca => pirateIds.Contains(fca.PirateId) &&
+                          servedCategories.Contains(fca.FoodCategoryId))
+            .GroupBy(fca => fca.PirateId)
+            .ToDictionaryAsync(g => g.Key, g => g.Count());
+
+        // Calculate adjustments in memory
+        foreach (var pirateId in pirateIds)
+        {
+            var prefCount = preferences.GetValueOrDefault(pirateId, 0);
+            var allergyCount = allergies.GetValueOrDefault(pirateId, 0);
+            adjustments[pirateId] = prefCount - allergyCount;
+        }
+
+        return adjustments;
+    }
+
+    /// <summary>
     ///     Get all food category IDs served in a specific arena for a round.
     /// </summary>
     private async Task<List<int>> GetServedFoodCategoriesAsync(int roundId, int arenaId)

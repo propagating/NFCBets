@@ -442,7 +442,8 @@ public class BettingStrategyService : IBettingStrategyService
         return combinedProbability * totalPayout - 1.0;
     }
 
-    private List<Bet> EnsureMinimumBets(List<Bet> existingBets, List<PiratePrediction> predictions, RiskLevelEnum riskLevelEnum,
+    private List<Bet> EnsureMinimumBets(List<Bet> existingBets, List<PiratePrediction> predictions,
+        RiskLevelEnum riskLevelEnum,
         BetOptimizationMethodEnum methodEnum)
     {
         var bets = new List<Bet>(existingBets);
@@ -524,7 +525,8 @@ public class BettingStrategyService : IBettingStrategyService
         };
     }
 
-    private BetSeries GenerateBalancedSeriesOptimized(List<PiratePrediction> predictions, BetOptimizationMethodEnum methodEnum)
+    private BetSeries GenerateBalancedSeriesOptimized(List<PiratePrediction> predictions,
+        BetOptimizationMethodEnum methodEnum)
     {
         var picks = PreFilterPirates(predictions, 5, 0.25f);
         var combinations = GenerateBetCombinationsOptimized(picks, 1, 4, 5000);
@@ -540,7 +542,8 @@ public class BettingStrategyService : IBettingStrategyService
         };
     }
 
-    private BetSeries GenerateModerateSeriesOptimized(List<PiratePrediction> predictions, BetOptimizationMethodEnum methodEnum)
+    private BetSeries GenerateModerateSeriesOptimized(List<PiratePrediction> predictions,
+        BetOptimizationMethodEnum methodEnum)
     {
         var picks = PreFilterPirates(predictions, 5, 0.15f);
         var combinations = GenerateBetCombinationsOptimized(picks, 1, 5, 5000);
@@ -577,7 +580,8 @@ public class BettingStrategyService : IBettingStrategyService
         };
     }
 
-    private BetSeries GenerateHighRiskSeriesOptimized(List<PiratePrediction> predictions, BetOptimizationMethodEnum methodEnum)
+    private BetSeries GenerateHighRiskSeriesOptimized(List<PiratePrediction> predictions,
+        BetOptimizationMethodEnum methodEnum)
     {
         var picks = predictions
             .GroupBy(p => p.ArenaId)

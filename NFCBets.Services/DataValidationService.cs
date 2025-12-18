@@ -59,8 +59,8 @@ public class DataValidationService : IDataValidationService
     }
 
     /// <summary>
-    /// Checking for pirate placements whose odds are still 1:1 after the table has been sat,
-    /// as these odds are a placeholder
+    ///     Checking for pirate placements whose odds are still 1:1 after the table has been sat,
+    ///     as these odds are a placeholder
     /// </summary>
     /// <param name="report"></param>
     /// <param name="startRound"></param>
@@ -76,7 +76,7 @@ public class DataValidationService : IDataValidationService
         if (endRound.HasValue)
             query = query.Where(rpp => rpp.RoundId <= endRound.Value);
 
-        
+
         //Check for current odds that are 1:1 they should all be 
         var oneToOneOddsRecords = await query
             .Where(rpp => rpp.StartingOdds == 1 || rpp.CurrentOdds == 1)
@@ -96,23 +96,22 @@ public class DataValidationService : IDataValidationService
             {
                 Severity = ValidationSeverityEnum.Critical,
                 Category = "Invalid Odds",
-                Message = $"Found {oneToOneOddsRecords.Count} records with 1:1 odds (should be excluded as no-bet placeholders)",
+                Message =
+                    $"Found {oneToOneOddsRecords.Count} records with 1:1 odds (should be excluded as no-bet placeholders)",
                 AffectedRecords = oneToOneOddsRecords.Count,
-                Details = oneToOneOddsRecords.Take(10).Select(r => 
+                Details = oneToOneOddsRecords.Take(10).Select(r =>
                     $"Round {r.RoundId}, Arena {r.ArenaId}, Pirate {r.PirateId}: Starting={r.StartingOdds}:1, Current={r.CurrentOdds}:1"
                 ).ToList()
             });
 
             Console.WriteLine($"   ❌ CRITICAL: Found {oneToOneOddsRecords.Count} records with 1:1 odds");
-            Console.WriteLine($"      Sample records:");
+            Console.WriteLine("      Sample records:");
             foreach (var record in oneToOneOddsRecords.Take(5))
-            {
                 Console.WriteLine($"         Round {record.RoundId}, Arena {record.ArenaId}, Pirate {record.PirateId}");
-            }
         }
         else
         {
-            Console.WriteLine($"   ✅ No 1:1 odds found");
+            Console.WriteLine("   ✅ No 1:1 odds found");
         }
     }
 
@@ -128,10 +127,10 @@ public class DataValidationService : IDataValidationService
             query = query.Where(rpp => rpp.RoundId <= endRound.Value);
 
         var invalidOdds = await query
-            .Where(rpp => rpp.StartingOdds <= 0 || 
-                         rpp.CurrentOdds <= 0 || 
-                         rpp.StartingOdds > 25 || 
-                         rpp.CurrentOdds > 25)
+            .Where(rpp => rpp.StartingOdds <= 0 ||
+                          rpp.CurrentOdds <= 0 ||
+                          rpp.StartingOdds > 25 ||
+                          rpp.CurrentOdds > 25)
             .Select(rpp => new
             {
                 rpp.RoundId,
@@ -150,7 +149,7 @@ public class DataValidationService : IDataValidationService
                 Category = "Invalid Odds",
                 Message = $"Found {invalidOdds.Count} records with invalid odds (≤0 or >25)",
                 AffectedRecords = invalidOdds.Count,
-                Details = invalidOdds.Take(10).Select(r => 
+                Details = invalidOdds.Take(10).Select(r =>
                     $"Round {r.RoundId}, Arena {r.ArenaId}, Pirate {r.PirateId}: Starting={r.StartingOdds}:1, Current={r.CurrentOdds}:1"
                 ).ToList()
             });
@@ -159,7 +158,7 @@ public class DataValidationService : IDataValidationService
         }
         else
         {
-            Console.WriteLine($"   ✅ All odds are valid (2-25:1)");
+            Console.WriteLine("   ✅ All odds are valid (2-25:1)");
         }
     }
 
@@ -195,7 +194,7 @@ public class DataValidationService : IDataValidationService
                 Category = "Missing Winners",
                 Message = $"Found {roundsWithArenas.Count} arena/round combinations with no winner",
                 AffectedRecords = roundsWithArenas.Count,
-                Details = roundsWithArenas.Take(10).Select(r => 
+                Details = roundsWithArenas.Take(10).Select(r =>
                     $"Round {r.RoundId}, Arena {r.ArenaId}: No winner marked"
                 ).ToList()
             });
@@ -204,7 +203,7 @@ public class DataValidationService : IDataValidationService
         }
         else
         {
-            Console.WriteLine($"   ✅ All completed arenas have a winner");
+            Console.WriteLine("   ✅ All completed arenas have a winner");
         }
     }
 
@@ -240,7 +239,7 @@ public class DataValidationService : IDataValidationService
                 Category = "Multiple Winners",
                 Message = $"Found {multipleWinners.Count} arenas with multiple winners",
                 AffectedRecords = multipleWinners.Count,
-                Details = multipleWinners.Take(10).Select(r => 
+                Details = multipleWinners.Take(10).Select(r =>
                     $"Round {r.RoundId}, Arena {r.ArenaId}: {r.WinnerCount} winners"
                 ).ToList()
             });
@@ -249,80 +248,83 @@ public class DataValidationService : IDataValidationService
         }
         else
         {
-            Console.WriteLine($"   ✅ All arenas have exactly one winner");
+            Console.WriteLine("   ✅ All arenas have exactly one winner");
         }
     }
 
-private async Task CheckForOrphanedRecordsAsync(DataValidationReport report, int? startRound, int? endRound)
-{
-    Console.WriteLine("\n5️⃣ Checking for orphaned records (placements without results)...");
-
-    var placementsQuery = _context.RoundPiratePlacements.AsQueryable();
-    var resultsQuery = _context.RoundResults.Where(rr => rr.IsComplete).AsQueryable();
-
-    if (startRound.HasValue)
+    private async Task CheckForOrphanedRecordsAsync(DataValidationReport report, int? startRound, int? endRound)
     {
-        placementsQuery = placementsQuery.Where(rpp => rpp.RoundId >= startRound.Value);
-        resultsQuery = resultsQuery.Where(rr => rr.RoundId >= startRound.Value);
-    }
-    if (endRound.HasValue)
-    {
-        placementsQuery = placementsQuery.Where(rpp => rpp.RoundId <= endRound.Value);
-        resultsQuery = resultsQuery.Where(rr => rr.RoundId <= endRound.Value);
-    }
+        Console.WriteLine("\n5️⃣ Checking for orphaned records (placements without results)...");
 
-    var placements = await placementsQuery
-        .Where(rpp => rpp.RoundId.HasValue && rpp.ArenaId.HasValue && rpp.PirateId.HasValue) // Ensure non-null
-        .Select(rpp => new { 
-            RoundId = rpp.RoundId!.Value, 
-            ArenaId = rpp.ArenaId!.Value, 
-            PirateId = rpp.PirateId!.Value 
-        })
-        .ToListAsync();
+        var placementsQuery = _context.RoundPiratePlacements.AsQueryable();
+        var resultsQuery = _context.RoundResults.Where(rr => rr.IsComplete).AsQueryable();
 
-    var results = await resultsQuery
-        .Where(rr => rr.RoundId.HasValue) // Ensure non-null
-        .Select(rr => new { 
-            RoundId = rr.RoundId!.Value, 
-            ArenaId = rr.ArenaId, 
-            PirateId = rr.PirateId 
-        })
-        .ToListAsync();
-
-    // Create strongly-typed tuples
-    var placementSet = placements
-        .Select(p => (RoundId: p.RoundId, ArenaId: p.ArenaId, PirateId: p.PirateId))
-        .ToHashSet();
-    
-    var resultSet = results
-        .Select(r => (RoundId: r.RoundId, ArenaId: r.ArenaId, PirateId: r.PirateId))
-        .ToHashSet();
-
-    // Now Except will work with named tuples
-    var orphanedPlacements = placementSet.Except(resultSet).ToList();
-
-    if (orphanedPlacements.Any())
-    {
-        report.Issues.Add(new DataValidationIssue
+        if (startRound.HasValue)
         {
-            Severity = ValidationSeverityEnum.Medium,
-            Category = "Orphaned Records",
-            Message = $"Found {orphanedPlacements.Count} placements without corresponding results",
-            AffectedRecords = orphanedPlacements.Count,
-            Details = orphanedPlacements.Take(10).Select(r => 
-                $"Round {r.RoundId}, Arena {r.ArenaId}, Pirate {r.PirateId}"
-            ).ToList()
-        });
+            placementsQuery = placementsQuery.Where(rpp => rpp.RoundId >= startRound.Value);
+            resultsQuery = resultsQuery.Where(rr => rr.RoundId >= startRound.Value);
+        }
 
-        Console.WriteLine($"   ⚠️  Found {orphanedPlacements.Count} orphaned placements");
-    }
-    else
-    {
-        Console.WriteLine($"   ✅ All placements have corresponding results");
-    }
-}
+        if (endRound.HasValue)
+        {
+            placementsQuery = placementsQuery.Where(rpp => rpp.RoundId <= endRound.Value);
+            resultsQuery = resultsQuery.Where(rr => rr.RoundId <= endRound.Value);
+        }
 
-    
+        var placements = await placementsQuery
+            .Where(rpp => rpp.RoundId.HasValue && rpp.ArenaId.HasValue && rpp.PirateId.HasValue) // Ensure non-null
+            .Select(rpp => new
+            {
+                RoundId = rpp.RoundId!.Value,
+                ArenaId = rpp.ArenaId!.Value,
+                PirateId = rpp.PirateId!.Value
+            })
+            .ToListAsync();
+
+        var results = await resultsQuery
+            .Where(rr => rr.RoundId.HasValue) // Ensure non-null
+            .Select(rr => new
+            {
+                RoundId = rr.RoundId!.Value,
+                rr.ArenaId,
+                rr.PirateId
+            })
+            .ToListAsync();
+
+        // Create strongly-typed tuples
+        var placementSet = placements
+            .Select(p => (p.RoundId, p.ArenaId, p.PirateId))
+            .ToHashSet();
+
+        var resultSet = results
+            .Select(r => (r.RoundId, r.ArenaId, r.PirateId))
+            .ToHashSet();
+
+        // Now Except will work with named tuples
+        var orphanedPlacements = placementSet.Except(resultSet).ToList();
+
+        if (orphanedPlacements.Any())
+        {
+            report.Issues.Add(new DataValidationIssue
+            {
+                Severity = ValidationSeverityEnum.Medium,
+                Category = "Orphaned Records",
+                Message = $"Found {orphanedPlacements.Count} placements without corresponding results",
+                AffectedRecords = orphanedPlacements.Count,
+                Details = orphanedPlacements.Take(10).Select(r =>
+                    $"Round {r.RoundId}, Arena {r.ArenaId}, Pirate {r.PirateId}"
+                ).ToList()
+            });
+
+            Console.WriteLine($"   ⚠️  Found {orphanedPlacements.Count} orphaned placements");
+        }
+        else
+        {
+            Console.WriteLine("   ✅ All placements have corresponding results");
+        }
+    }
+
+
     private async Task CheckForInvalidPositionsAsync(DataValidationReport report, int? startRound, int? endRound)
     {
         Console.WriteLine("\n6️⃣ Checking for invalid positions (should be 0-3)...");
@@ -353,7 +355,7 @@ private async Task CheckForOrphanedRecordsAsync(DataValidationReport report, int
                 Category = "Invalid Positions",
                 Message = $"Found {invalidPositions.Count} records with invalid positions (not 0-3)",
                 AffectedRecords = invalidPositions.Count,
-                Details = invalidPositions.Take(10).Select(r => 
+                Details = invalidPositions.Take(10).Select(r =>
                     $"Round {r.RoundId}, Arena {r.ArenaId}, Pirate {r.PirateId}: Position={r.PirateSeatPosition}"
                 ).ToList()
             });
@@ -362,7 +364,7 @@ private async Task CheckForOrphanedRecordsAsync(DataValidationReport report, int
         }
         else
         {
-            Console.WriteLine($"   ✅ All positions are valid (0-3)");
+            Console.WriteLine("   ✅ All positions are valid (0-3)");
         }
     }
 
@@ -396,7 +398,7 @@ private async Task CheckForOrphanedRecordsAsync(DataValidationReport report, int
                 Category = "Invalid Food Adjustments",
                 Message = $"Found {invalidAdjustments.Count} records with food adjustments outside -3 to +3 range",
                 AffectedRecords = invalidAdjustments.Count,
-                Details = invalidAdjustments.Take(10).Select(r => 
+                Details = invalidAdjustments.Take(10).Select(r =>
                     $"Round {r.RoundId}, Arena {r.ArenaId}, Pirate {r.PirateId}: Adjustment={r.PirateFoodAdjustment}"
                 ).ToList()
             });
@@ -405,7 +407,7 @@ private async Task CheckForOrphanedRecordsAsync(DataValidationReport report, int
         }
         else
         {
-            Console.WriteLine($"   ✅ All food adjustments are valid (-3 to +3)");
+            Console.WriteLine("   ✅ All food adjustments are valid (-3 to +3)");
         }
     }
 
@@ -440,7 +442,7 @@ private async Task CheckForOrphanedRecordsAsync(DataValidationReport report, int
                 Category = "Incomplete Arenas",
                 Message = $"Found {arenaCount.Count} arenas with != 4 pirates (excluding 1:1 placeholders)",
                 AffectedRecords = arenaCount.Count,
-                Details = arenaCount.Take(10).Select(r => 
+                Details = arenaCount.Take(10).Select(r =>
                     $"Round {r.RoundId}, Arena {r.ArenaId}: {r.PirateCount} pirates"
                 ).ToList()
             });
@@ -449,7 +451,7 @@ private async Task CheckForOrphanedRecordsAsync(DataValidationReport report, int
         }
         else
         {
-            Console.WriteLine($"   ✅ All arenas have exactly 4 pirates (excluding 1:1 placeholders)");
+            Console.WriteLine("   ✅ All arenas have exactly 4 pirates (excluding 1:1 placeholders)");
         }
     }
 
@@ -474,17 +476,13 @@ private async Task CheckForOrphanedRecordsAsync(DataValidationReport report, int
         {
             Console.WriteLine("\n❌ CRITICAL ISSUES FOUND - Must be fixed before training:");
             foreach (var issue in report.Issues.Where(i => i.Severity == ValidationSeverityEnum.Critical))
-            {
                 Console.WriteLine($"   • {issue.Category}: {issue.Message}");
-            }
         }
         else if (highCount > 0)
         {
             Console.WriteLine("\n⚠️  HIGH PRIORITY ISSUES - Should be investigated:");
             foreach (var issue in report.Issues.Where(i => i.Severity == ValidationSeverityEnum.High))
-            {
                 Console.WriteLine($"   • {issue.Category}: {issue.Message}");
-            }
         }
         else
         {
@@ -494,16 +492,16 @@ private async Task CheckForOrphanedRecordsAsync(DataValidationReport report, int
         report.IsValid = criticalCount == 0 && highCount == 0;
         report.ValidationPassed = criticalCount == 0;
     }
-    
+
     public async Task<bool> HasValidBettingOpportunities(int roundId, NfcbetsContext context)
     {
         var placements = await context.RoundPiratePlacements
             .Where(rpp => rpp.RoundId == roundId)
             .ToListAsync();
-        
+
         // Check each arena has at least one pirate with odds > 1
         var arenas = placements.GroupBy(p => p.ArenaId);
-        
+
         foreach (var arena in arenas)
         {
             var hasValidPirate = arena.Any(p => (p.CurrentOdds ?? p.StartingOdds) > 1);
@@ -513,7 +511,7 @@ private async Task CheckForOrphanedRecordsAsync(DataValidationReport report, int
                 return false;
             }
         }
-        
+
         return true;
     }
 }

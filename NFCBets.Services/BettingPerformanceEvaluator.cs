@@ -295,8 +295,6 @@ public class BettingPerformanceEvaluator : IBettingPerformanceEvaluator
         Console.WriteLine($"   Sharpe Ratio: {bestStrategy.SharpeRatio:F2}");
         Console.WriteLine($"   ROI: {bestStrategy.ROI:+P2;-P2}");
     }
-    
-    
 }
 
 // Result classes

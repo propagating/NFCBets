@@ -20,7 +20,7 @@ public class CrossValidationService : ICrossValidationService
     {
         Console.WriteLine($"🔄 Performing {k}-Fold Cross-Validation...");
 
-        var allData = await _featureService.CreateTrainingDataAsync(4000);
+        var allData = await _featureService.CreateTrainingDataAsync(10000);
         var validData = allData.Where(f => f.IsWinner.HasValue).OrderBy(f => f.RoundId).ToList();
 
         Console.WriteLine($"   Total data: {validData.Count} records");
@@ -36,8 +36,8 @@ public class CrossValidationService : ICrossValidationService
             var testStart = fold * foldSize;
             var testEnd = fold == k - 1 ? validData.Count : (fold + 1) * foldSize;
 
-            var testData = validData.Skip(testStart).Take(testEnd - testStart).ToList();
-            var trainData = validData.Take(testStart).Concat(validData.Skip(testEnd)).ToList();
+            var testData = validData.OrderBy(x=> x.RoundId).Skip(testStart).Take(testEnd - testStart).ToList();
+            var trainData = validData.OrderBy(x=> x.RoundId).Take(testStart).Concat(validData.Skip(testEnd)).ToList();
 
             if (trainData.Count < 100)
             {
@@ -69,7 +69,7 @@ public class CrossValidationService : ICrossValidationService
     {
         Console.WriteLine($"📅 Performing Time-Series Cross-Validation ({numFolds} folds)...");
 
-        var allData = await _featureService.CreateTrainingDataAsync(4000);
+        var allData = await _featureService.CreateTrainingDataAsync(10000);
         var validData = allData.Where(f => f.IsWinner.HasValue).OrderBy(f => f.RoundId).ToList();
 
         Console.WriteLine($"   Total data: {validData.Count} records");

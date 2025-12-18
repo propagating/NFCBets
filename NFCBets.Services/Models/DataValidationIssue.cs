@@ -2,7 +2,6 @@ using NFCBets.Services.Enums;
 
 namespace NFCBets.Services.Models;
 
-
 public class DataValidationIssue
 {
     public ValidationSeverityEnum Severity { get; set; }
@@ -11,4 +10,3 @@ public class DataValidationIssue
     public int AffectedRecords { get; set; }
     public List<string> Details { get; set; } = new();
 }
-

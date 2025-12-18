@@ -690,59 +690,58 @@ public class CausalInferenceService : ICausalInferenceService
 
     public async Task<OddsDiagnosticReport> DiagnoseOddsPatternAsync(List<CausalDataPoint>? data = null)
     {
-    data ??= await LoadCausalDataAsync(redistributeClamped: true);
-    
-    Console.WriteLine("\n═══════════════════════════════════════════════════");
-    Console.WriteLine("🔍 ODDS PATTERN DIAGNOSTIC");
-    Console.WriteLine("═══════════════════════════════════════════════════\n");
-    
-    Console.WriteLine("ℹ️  Note: Odds of 1:1 are placeholders (no bet) and excluded from analysis");
-    Console.WriteLine("ℹ️  Note: Odds of 13:1 redistributed to estimated true odds (13-25:1)\n");
-    
-    // Check if any 1:1 odds slipped through (shouldn't happen)
-    var onesCount = data.Count(d => d.CurrentOdds == 1);
-    if (onesCount > 0)
-    {
-        Console.WriteLine($"⚠️  WARNING: Found {onesCount} records with 1:1 odds (should be filtered!)");
-    }
-    
-    // Find minimum odds in dataset
-    var minOdds = data.Any() ? data.Min(d => d.CurrentOdds) : 0;
-    Console.WriteLine($"   Minimum odds in dataset: {minOdds}:1 (should be 2:1 or higher)");
-    
-    var oddsBuckets = data.GroupBy(d => d.CurrentOdds)
-        .OrderBy(g => g.Key)
-        .Select(g => new OddsBucket
+        data ??= await LoadCausalDataAsync(true);
+
+        Console.WriteLine("\n═══════════════════════════════════════════════════");
+        Console.WriteLine("🔍 ODDS PATTERN DIAGNOSTIC");
+        Console.WriteLine("═══════════════════════════════════════════════════\n");
+
+        Console.WriteLine("ℹ️  Note: Odds of 1:1 are placeholders (no bet) and excluded from analysis");
+        Console.WriteLine("ℹ️  Note: Odds of 13:1 redistributed to estimated true odds (13-25:1)\n");
+
+        // Check if any 1:1 odds slipped through (shouldn't happen)
+        var onesCount = data.Count(d => d.CurrentOdds == 1);
+        if (onesCount > 0)
+            Console.WriteLine($"⚠️  WARNING: Found {onesCount} records with 1:1 odds (should be filtered!)");
+
+        // Find minimum odds in dataset
+        var minOdds = data.Any() ? data.Min(d => d.CurrentOdds) : 0;
+        Console.WriteLine($"   Minimum odds in dataset: {minOdds}:1 (should be 2:1 or higher)");
+
+        var oddsBuckets = data.GroupBy(d => d.CurrentOdds)
+            .OrderBy(g => g.Key)
+            .Select(g => new OddsBucket
+            {
+                Odds = g.Key,
+                Count = g.Count(),
+                Wins = g.Count(d => d.IsWinner),
+                WinRate = g.Average(d => d.IsWinner ? 1.0 : 0.0),
+                ImpliedProbability = 1.0 / (g.Key + 1.0),
+                AvgStrength = g.Average(d => d.Strength),
+                AvgFoodAdjustment = g.Average(d => d.FoodAdjustment),
+                AvgPosition = g.Average(d => d.Position)
+            })
+            .ToList();
+
+        Console.WriteLine("Odds Analysis by Bucket:");
+        Console.WriteLine("───────────────────────────────────────────────────────────────────────");
+        Console.WriteLine(
+            $"{"Odds",-8} {"Count",-8} {"Wins",-8} {"Win%",-10} {"Expected%",-12} {"Diff",-10} {"AvgStr",-8} {"AvgFood",-8}");
+        Console.WriteLine("───────────────────────────────────────────────────────────────────────");
+
+        foreach (var bucket in oddsBuckets)
         {
-            Odds = g.Key,
-            Count = g.Count(),
-            Wins = g.Count(d => d.IsWinner),
-            WinRate = g.Average(d => d.IsWinner ? 1.0 : 0.0),
-            ImpliedProbability = 1.0 / (g.Key + 1.0),
-            AvgStrength = g.Average(d => d.Strength),
-            AvgFoodAdjustment = g.Average(d => d.FoodAdjustment),
-            AvgPosition = g.Average(d => d.Position)
-        })
-        .ToList();
-    
-    Console.WriteLine("Odds Analysis by Bucket:");
-    Console.WriteLine("───────────────────────────────────────────────────────────────────────");
-    Console.WriteLine($"{"Odds",-8} {"Count",-8} {"Wins",-8} {"Win%",-10} {"Expected%",-12} {"Diff",-10} {"AvgStr",-8} {"AvgFood",-8}");
-    Console.WriteLine("───────────────────────────────────────────────────────────────────────");
-    
-    foreach (var bucket in oddsBuckets)
-    {
-        var diff = bucket.WinRate - bucket.ImpliedProbability;
-        
-        var warning = "";
-        if (bucket.Odds >= 13 && bucket.Odds <= 25)
-            warning = " (redistributed from clamped 13:1)";
-        
-        Console.WriteLine($"{bucket.Odds}:1      {bucket.Count,-8} {bucket.Wins,-8} " +
-                         $"{bucket.WinRate,-10:P2} {bucket.ImpliedProbability,-12:P2} " +
-                         $"{diff,-10:+0.0%;-0.0%} {bucket.AvgStrength,-8:F1} {bucket.AvgFoodAdjustment,-8:F2}{warning}");
-    }
-    
+            var diff = bucket.WinRate - bucket.ImpliedProbability;
+
+            var warning = "";
+            if (bucket.Odds >= 13 && bucket.Odds <= 25)
+                warning = " (redistributed from clamped 13:1)";
+
+            Console.WriteLine($"{bucket.Odds}:1      {bucket.Count,-8} {bucket.Wins,-8} " +
+                              $"{bucket.WinRate,-10:P2} {bucket.ImpliedProbability,-12:P2} " +
+                              $"{diff,-10:+0.0%;-0.0%} {bucket.AvgStrength,-8:F1} {bucket.AvgFoodAdjustment,-8:F2}{warning}");
+        }
+
 
         // Now correlation should be clean across ALL odds
         var oddsValues = data.Select(d => (double)d.CurrentOdds).ToList();
@@ -779,6 +778,8 @@ public class CausalInferenceService : ICausalInferenceService
             TotalObservations = data.Count
         };
     }
+    
+    
 
 // Helper method to generate key findings
     private void GenerateKeyFindings(ComprehensiveCausalReport report)
@@ -1095,31 +1096,32 @@ public class CausalInferenceService : ICausalInferenceService
     }
 
     /// <summary>
-    /// Adjusts win rates for clamped 13:1 odds using theoretical expectations
+    ///     Adjusts win rates for clamped 13:1 odds using theoretical expectations
     /// </summary>
     private Dictionary<int, double> CalculateAdjustedWinRates(List<CausalDataPoint> data)
     {
         var winRates = new Dictionary<int, double>();
-    
+
         foreach (var oddsGroup in data.GroupBy(d => d.CurrentOdds).OrderBy(g => g.Key))
         {
             var odds = oddsGroup.Key;
             var observedWinRate = oddsGroup.Average(d => d.IsWinner ? 1.0 : 0.0);
-        
+
             if (odds == 13)
             {
                 // For 13:1, we know true odds are 13:1 to 25:1+
                 // Observed win rate is contaminated (too high)
                 // Use theoretical calculation instead
-            
+
                 // Estimate average true odds (conservative: assume average is 16:1)
                 var estimatedAverageTrueOdds = 16;
                 var theoreticalWinRate = 1.0 / (estimatedAverageTrueOdds + 1.0);
-            
+
                 // Blend observed with theoretical (weight theoretical more heavily)
                 var adjustedWinRate = theoreticalWinRate * 0.7 + observedWinRate * 0.3;
-            
-                Console.WriteLine($"   13:1 Adjusted: Observed={observedWinRate:P2}, Theoretical={theoreticalWinRate:P2}, Adjusted={adjustedWinRate:P2}");
+
+                Console.WriteLine(
+                    $"   13:1 Adjusted: Observed={observedWinRate:P2}, Theoretical={theoreticalWinRate:P2}, Adjusted={adjustedWinRate:P2}");
                 winRates[odds] = adjustedWinRate;
             }
             else
@@ -1127,7 +1129,7 @@ public class CausalInferenceService : ICausalInferenceService
                 winRates[odds] = observedWinRate;
             }
         }
-    
+
         return winRates;
     }
 

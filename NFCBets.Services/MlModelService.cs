@@ -53,7 +53,7 @@ public class MlModelService : IMlModelService
 
         // Step 3: Load and prepare training data
         Console.WriteLine("\n📥 Step 3: Loading Training Data...");
-        var allData = await _featureService.CreateTrainingDataAsync(4000);
+        var allData = await _featureService.CreateTrainingDataAsync(10000);
         var validData = allData.Where(f => f.IsWinner.HasValue).ToList();
 
         var minRound = validData.Min(f => f.RoundId);
@@ -67,10 +67,7 @@ public class MlModelService : IMlModelService
         var evaluationService = new ModelEvaluationService();
         var leakageReport = await evaluationService.CheckForDataLeakageAsync(filteredData, _context);
 
-        if (leakageReport.HasLeakage)
-        {
-            Console.WriteLine("❌ Critical data leakage detected!");
-        }
+        if (leakageReport.HasLeakage) Console.WriteLine("❌ Critical data leakage detected!");
 
         // Step 5: Cross-validation with causal features
         Console.WriteLine("\n🔄 Step 5: Cross-Validation (Causal Features Only)...");
@@ -151,15 +148,15 @@ public class MlModelService : IMlModelService
         // Step 0: DATA VALIDATION (NEW!)
         Console.WriteLine("\n🔍 Step 0: Data Quality Validation...");
         var validationService = new DataValidationService(_context);
-        var validationReport = await validationService.ValidateDataQualityAsync(startRound: 5300, endRound: 9705);
-    
+        var validationReport = await validationService.ValidateDataQualityAsync(5300, 9705);
+
         if (!validationReport.ValidationPassed)
         {
             Console.WriteLine("\n❌ Data validation failed! Please fix critical issues before training.");
             throw new InvalidOperationException("Data validation failed with critical issues");
         }
 
-        var allData = await _featureService.CreateTrainingDataAsync(4000);
+        var allData = await _featureService.CreateTrainingDataAsync(10000);
         var validData = allData.Where(f => f.IsWinner.HasValue).ToList();
 
         Console.WriteLine($"Total valid training data: {validData.Count} records");
@@ -313,7 +310,7 @@ public class MlModelService : IMlModelService
     {
         Console.WriteLine("🤖 Training ML model (without detailed evaluation)...");
 
-        var trainingData = await _featureService.CreateTrainingDataAsync();
+        var trainingData = await _featureService.CreateTrainingDataAsync(10000);
         var validData = trainingData.Where(f => f.IsWinner.HasValue).ToList();
 
         Console.WriteLine($"Training with {validData.Count} records");

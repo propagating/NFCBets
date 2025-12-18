@@ -5,9 +5,9 @@ using NFCBets.Repository.Models;
 
 namespace NFCBets.Repository;
 
-public class FoodClubRepository(NfcbetsContext conext) : IFoodClubRepository
+public class FoodClubRepository(NfcbetsContext context) : IFoodClubRepository
 {
-    private readonly NfcbetsContext _db = conext;
+    private readonly NfcbetsContext _db = context;
 
 
     public async Task<List<Pirate>> GetAllPiratesAsync()
@@ -129,12 +129,13 @@ public class FoodClubRepository(NfcbetsContext conext) : IFoodClubRepository
 
         for (var i = 0; i < round.Pirates.Count; i++)
         {
-            var arenaId = i;
+            var arenaId = i + 1;
+            
             var pirateIds = round.Pirates[i];
             var foodIds = round.Foods[i];
             var winnerIds = round.Winners;
-            var openingOds = round.OpeningOdds[i];
-            var currentOds = round.CurrentOdds[i];
+            var openingOdds = round.OpeningOdds[i];
+            var currentOdds = round.CurrentOdds[i];
 
             // Handle RoundPiratePlacements
             for (var p = 0; p < pirateIds.Count; p++)
@@ -143,17 +144,18 @@ public class FoodClubRepository(NfcbetsContext conext) : IFoodClubRepository
                 var placementKey = new
                     { RoundId = (int?)round.Round, ArenaId = (int?)arenaId, PirateId = (int?)pirate };
                 var foodIdsForArena = round.Foods[i];
+                var oddsPosition = p + 1;
                 var adjustment = await CalculatePirateFoodAdjustmentAsync(pirate, foodIdsForArena);
                 if (placementLookup.TryGetValue(placementKey, out var existingPlacement))
                 {
                     // Update existing placement
                     existingPlacement.PirateSeatPosition = p;
                     existingPlacement.PirateFoodAdjustment = adjustment;
-                    existingPlacement.CurrentOdds = currentOds[p];
+                    existingPlacement.CurrentOdds = currentOdds[oddsPosition];
                 }
                 else
                 {
-                    // Add new placement
+                    // Add a new placement
                     var newPlacement = new RoundPiratePlacement
                     {
                         RoundId = round.Round,
@@ -161,8 +163,8 @@ public class FoodClubRepository(NfcbetsContext conext) : IFoodClubRepository
                         PirateId = pirate,
                         PirateSeatPosition = p,
                         PirateFoodAdjustment = 0,
-                        StartingOdds = openingOds[p],
-                        CurrentOdds = currentOds[p]
+                        StartingOdds = openingOdds[oddsPosition],
+                        CurrentOdds = currentOdds[oddsPosition]
                     };
 
                     await _db.RoundPiratePlacements.AddAsync(newPlacement);
@@ -194,22 +196,23 @@ public class FoodClubRepository(NfcbetsContext conext) : IFoodClubRepository
                 var pirate = pirateIds[p];
                 var resultKey = new { RoundId = (int?)round.Round, ArenaId = arenaId, PirateId = pirate };
 
+                var oddsPosition = p + 1;
                 if (resultLookup.TryGetValue(resultKey, out var existingResult))
                 {
                     // Update existing result
-                    existingResult.EndingOdds = currentOds[p];
+                    existingResult.EndingOdds = currentOdds[oddsPosition];
                     existingResult.IsWinner = winnerIds.Contains(pirate);
                     existingResult.IsComplete = round.IsComplete;
                 }
                 else
                 {
-                    // Add new result
+                    // Adds a new result
                     var newResult = new RoundResult
                     {
                         RoundId = round.Round,
                         ArenaId = arenaId,
                         PirateId = pirate,
-                        EndingOdds = currentOds[p],
+                        EndingOdds = currentOdds[oddsPosition],
                         IsWinner = winnerIds.Contains(pirate),
                         IsComplete = round.IsComplete
                     };
