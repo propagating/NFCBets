@@ -53,7 +53,7 @@ public class MlModelService : IMlModelService
 
         // Step 3: Load and prepare training data
         Console.WriteLine("\n📥 Step 3: Loading Training Data...");
-        var allData = await _featureService.CreateTrainingDataAsync(10000);
+        var allData = await _featureService.CreateTrainingDataAsync();
         var validData = allData.Where(f => f.IsWinner.HasValue).ToList();
 
         var minRound = validData.Min(f => f.RoundId);
@@ -156,7 +156,7 @@ public class MlModelService : IMlModelService
             throw new InvalidOperationException("Data validation failed with critical issues");
         }
 
-        var allData = await _featureService.CreateTrainingDataAsync(10000);
+        var allData = await _featureService.CreateTrainingDataAsync();
         var validData = allData.Where(f => f.IsWinner.HasValue).ToList();
 
         Console.WriteLine($"Total valid training data: {validData.Count} records");
@@ -310,7 +310,7 @@ public class MlModelService : IMlModelService
     {
         Console.WriteLine("🤖 Training ML model (without detailed evaluation)...");
 
-        var trainingData = await _featureService.CreateTrainingDataAsync(10000);
+        var trainingData = await _featureService.CreateTrainingDataAsync();
         var validData = trainingData.Where(f => f.IsWinner.HasValue).ToList();
 
         Console.WriteLine($"Training with {validData.Count} records");
@@ -409,15 +409,6 @@ public class MlModelService : IMlModelService
             result.ExcludedFeatures.Add(nameof(MlPirateFeature.FoodAdjustment));
         }
 
-        if (causalReport.SeatPositionEffect.IsSignificant)
-        {
-            result.SelectedFeatures.Add(nameof(MlPirateFeature.Position));
-            featureEffects[nameof(MlPirateFeature.Position)] = causalReport.SeatPositionEffect.AverageTreatmentEffect;
-        }
-        else
-        {
-            result.ExcludedFeatures.Add(nameof(MlPirateFeature.Position));
-        }
 
         if (causalReport.RivalStrengthEffect.IsSignificant)
         {
@@ -506,20 +497,6 @@ public class MlModelService : IMlModelService
             recommendations.Add("Use food adjustment cautiously - may be confounded with other factors");
         }
 
-        // Position insights
-        if (causalReport.SeatPositionEffect.IsSignificant)
-        {
-            findings.Add(
-                $"Seat position has causal impact ({causalReport.SeatPositionEffect.AverageTreatmentEffect:+P1})");
-
-            if (causalReport.SeatPositionEffect.PositionEffects != null)
-            {
-                var bestPosition = causalReport.SeatPositionEffect.PositionEffects.OrderByDescending(kv => kv.Value)
-                    .First();
-                recommendations.Add(
-                    $"Position {bestPosition.Key} shows {bestPosition.Value:+P1} advantage - weight heavily in model");
-            }
-        }
 
         // Rival strength insights
         if (causalReport.RivalStrengthEffect.IsSignificant &&
@@ -635,7 +612,6 @@ public class MlModelService : IMlModelService
     {
         // Based on causal analysis, recommend optimization method
         if (causalReport.FoodAdjustmentEffect.IsSignificant &&
-            causalReport.SeatPositionEffect.IsSignificant &&
             causalReport.InteractionEffects.Any(ie => ie.Value.IsSynergistic))
             return "ConsistencyWeighted - Multiple causal factors suggest focusing on reliable combinations";
 

@@ -22,7 +22,7 @@ internal class Program
         var startRound = 9700;
         var currentRound = 9722;
         var modelPath = "Models/foodclub_mp.cd.vd.r.e.cs.c.bt_model.zip";
-        
+
         args = args.Length == 0
             ? new[]
             {
@@ -40,10 +40,10 @@ internal class Program
                 "--backtest"
             }
             : args;
-    
+
         var measurePerformance = args.Contains("--measure-performance");
-        
-        
+
+
         var host = Host.CreateDefaultBuilder(args)
             .ConfigureServices(services =>
             {
@@ -74,8 +74,8 @@ internal class Program
             var forceCollect = args.Contains("--force-collect");
             var useParallel = args.Contains("--parallel");
             var endRound = currentRound;
-    
-            Console.WriteLine($"📥 Collecting historical Food Club data...");
+
+            Console.WriteLine("📥 Collecting historical Food Club data...");
             Console.WriteLine($"   Force collect: {forceCollect}");
             Console.WriteLine($"   Parallel: {useParallel}");
             Console.WriteLine($"   Range: {startRound} to {endRound}");
@@ -87,7 +87,7 @@ internal class Program
                 {
                     Console.WriteLine("Dont' do this right now it's not working");
                     await PerformanceHelper.MeasureAsync("Parallel data collection",
-                        () => dataService.CollectRangeParallelAsync(startRound, endRound, forceCollect, maxParallel: 10));
+                        () => dataService.CollectRangeParallelAsync(startRound, endRound, forceCollect, 10));
                 }
                 else
                 {
@@ -97,15 +97,9 @@ internal class Program
             }
 
             if (!useParallel)
-            {
                 await dataService.CollectRangeAsync(startRound, endRound, forceCollect);
-            }
             else
-            {
-                await dataService.CollectRangeParallelAsync(startRound, endRound, forceCollect, maxParallel: 10);
-                
-            }
-
+                await dataService.CollectRangeParallelAsync(startRound, endRound, forceCollect, 10);
         }
 
         if (args.Contains("--validate-data"))
@@ -248,7 +242,8 @@ internal class Program
             else
             {
                 Console.WriteLine("📊 Comparing all bet optimization strategies...\n");
-                var comparisonReport = await comparisonService.CompareOptimizationMethodsAsync(startRound, currentRound);
+                var comparisonReport =
+                    await comparisonService.CompareOptimizationMethodsAsync(startRound, currentRound);
                 Console.WriteLine(
                     $"\n🏆 FINAL RECOMMENDATION: Use {comparisonReport.BestBySharpe} for best risk-adjusted returns");
             }
@@ -268,7 +263,8 @@ internal class Program
             else
             {
                 var backtestReport =
-                    await evaluator.BacktestBettingStrategyAsync(startRound, currentRound, BetOptimizationMethodEnum.RiskAdjusted);
+                    await evaluator.BacktestBettingStrategyAsync(startRound, currentRound,
+                        BetOptimizationMethodEnum.RiskAdjusted);
                 SaveBacktestReport(backtestReport);
             }
         }
@@ -350,7 +346,7 @@ internal class Program
                 continue;
             }
 
-            for (var i = 0; i < series.Bets.Count; i++) 
+            for (var i = 0; i < series.Bets.Count; i++)
                 Console.WriteLine($"   {i + 1,2}. {series.Bets[i]}");
 
             // ✅ Only calculate if bets exist

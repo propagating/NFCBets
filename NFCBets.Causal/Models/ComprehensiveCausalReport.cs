@@ -3,24 +3,19 @@ namespace NFCBets.Causal.Models;
 public class ComprehensiveCausalReport
 {
     public DateTime GeneratedAt { get; set; } = DateTime.UtcNow;
+
+    // Food adjustment
     public CausalEffectReport FoodAdjustmentEffect { get; set; } = new();
 
-    // Seat Position - 4 tests
-    public CausalEffectReport SeatPositionEffect { get; set; } = new(); // Test 1: Overall with breakdown
+    // Seat Position (2 tests only)
+    public CausalEffectReport? OverallSeatPositionJointTest { get; set; } // Does it matter?
+    public Dictionary<int, CausalEffectReport> EachSeatVsOthersEffects { get; set; } = new(); // Which positions?
 
-    public Dictionary<int, CausalEffectReport> IndividualSeatPositionEffects { get; set; } =
-        new(); // Test 2: Individual reports
+    // Arena (2 tests only)
+    public CausalEffectReport? OverallArenaJointTest { get; set; } // Does it matter?
+    public Dictionary<int, CausalEffectReport> IndividualArenaEffects { get; set; } = new(); // Which arenas?
 
-    public Dictionary<int, CausalEffectReport> EachSeatVsOthersEffects { get; set; } = new(); // Test 3: Comparative
-    public CausalEffectReport? OverallSeatPositionJointTest { get; set; } // Test 4: Joint test
-
-    // Arena - 4 tests
-    public Dictionary<int, CausalEffectReport> IndividualArenaEffects { get; set; } =
-        new(); // Test 2: Individual reports
-
-    public Dictionary<int, CausalEffectReport> EachArenaVsOthersEffects { get; set; } = new(); // Test 3: Comparative
-    public CausalEffectReport? OverallArenaJointTest { get; set; } // Test 4: Joint test
-
+    // Other effects
     public CausalEffectReport RivalStrengthEffect { get; set; } = new();
     public CausalEffectReport OddsEffect { get; set; } = new();
     public OddsDiagnosticReport? OddsDiagnostic { get; set; }

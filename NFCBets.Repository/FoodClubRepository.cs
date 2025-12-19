@@ -130,7 +130,7 @@ public class FoodClubRepository(NfcbetsContext context) : IFoodClubRepository
         for (var i = 0; i < round.Pirates.Count; i++)
         {
             var arenaId = i + 1;
-            
+
             var pirateIds = round.Pirates[i];
             var foodIds = round.Foods[i];
             var winnerIds = round.Winners;

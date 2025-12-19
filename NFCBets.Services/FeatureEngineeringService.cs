@@ -21,20 +21,19 @@ public class FeatureEngineeringService : IFeatureEngineeringService
     /// OPTIMIZED: CreateFeaturesForRoundAsync with caching
     public async Task<List<PirateFeatureRecord>> CreateFeaturesForRoundAsync(int roundId)
     {
-
         // OPTIMIZATION 1: Single query for all placements
         // EXCLUDE 1:1 odds at query level
         var features = new List<PirateFeatureRecord>();
 
         Console.WriteLine($"   Loading placements for round {roundId}...");
-    
+
         // Check total placements first
         var allPlacements = await _context.RoundPiratePlacements
             .Where(rpp => rpp.RoundId == roundId)
             .ToListAsync();
-    
+
         Console.WriteLine($"   Found {allPlacements.Count} total placements");
-    
+
         // Filter out 1:1 odds
         var placements = allPlacements
             .Where(p => (p.CurrentOdds ?? p.StartingOdds) > 1)

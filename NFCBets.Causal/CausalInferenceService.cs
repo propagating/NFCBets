@@ -23,7 +23,7 @@ public class CausalInferenceService : ICausalInferenceService
 
         var report = new ComprehensiveCausalReport();
 
-        // Load all data once
+        // ✅ Load all data ONCE at entry point
         var allData = await LoadCausalDataAsync();
         Console.WriteLine($"📊 Loaded {allData.Count} observations for causal analysis\n");
 
@@ -32,102 +32,123 @@ public class CausalInferenceService : ICausalInferenceService
         report.FoodAdjustmentEffect = await EstimateFoodAdjustmentEffectAsync(allData);
         DisplayEffect(report.FoodAdjustmentEffect);
 
-        // ========== SEAT POSITION - 4 TESTS ==========
-        Console.WriteLine("\n2️⃣ SEAT POSITION ANALYSIS (4 Tests)");
+        // ========== SEAT POSITION - SIMPLIFIED TO 2 TESTS ==========
+        Console.WriteLine("\n2️⃣ SEAT POSITION ANALYSIS (2 Tests)");
         Console.WriteLine("═══════════════════════════════════════════════════");
 
-        // Test 1: Overall seat position effect (Position 0 vs others with breakdown)
-        Console.WriteLine("\n   Test 1: Overall Seat Position Effect (Position 0 vs Others)...");
-        report.SeatPositionEffect = await EstimateSeatPositionEffectAsync(allData);
-        DisplayEffect(report.SeatPositionEffect);
-
-        // Test 2: Individual seat position analysis (detailed analysis of each)
-        Console.WriteLine("\n   Test 2: Individual Seat Position Analysis...");
-        report.IndividualSeatPositionEffects = await EstimateIndividualSeatPositionEffectsAsync(allData);
-        foreach (var (position, effect) in report.IndividualSeatPositionEffects.OrderBy(kv => kv.Key))
-        {
-            Console.WriteLine($"\n      Position {position}:");
-            DisplayEffect(effect);
-        }
-
-        // Test 3: Each seat vs all others (comparative)
-        Console.WriteLine("\n   Test 3: Each Seat Position vs All Others (Comparative)...");
-        report.EachSeatVsOthersEffects = await EstimateEachSeatVsOthersEffectAsync(allData);
-        foreach (var (position, effect) in report.EachSeatVsOthersEffects.OrderBy(kv => kv.Key))
-            Console.WriteLine(
-                $"      Position {position} vs All Others: {effect.AverageTreatmentEffect:+0.0%;-0.0%} effect ({effect.MatchedPairs} matches)");
-
-        // Test 4: Joint test for seat position
-        Console.WriteLine("\n   Test 4: Overall Seat Position Joint Test...");
+        // Test 1: Does seat position matter at all? (Joint test)
+        Console.WriteLine("\n   Test 1: Overall Seat Position Effect (Joint Test)...");
         report.OverallSeatPositionJointTest = await TestOverallSeatPositionEffectAsync(allData);
-        Console.WriteLine($"      Permutation test: p={report.OverallSeatPositionJointTest.PValue:F3} " +
-                          $"{(report.OverallSeatPositionJointTest.IsSignificant ? "✅" : "⚠️")}");
-        Console.WriteLine(
-            $"      → Seat position {(report.OverallSeatPositionJointTest.IsSignificant ? "DOES" : "does NOT")} matter overall");
+        Console.WriteLine($"      p-value: {report.OverallSeatPositionJointTest.PValue:F4} " +
+                          $"{(report.OverallSeatPositionJointTest.IsSignificant ? "✅ Significant" : "⚠️ Not Significant")}");
 
-        // ========== ARENA - 4 TESTS ==========
-        Console.WriteLine("\n3️⃣ ARENA PLACEMENT ANALYSIS (4 Tests)");
-        Console.WriteLine("═══════════════════════════════════════════════════");
-
-        // Test 1: Overall arena effect (you might skip this if doing all individually)
-        // Skipping since Test 2 covers all arenas
-
-        // Test 2: Individual arena analysis (each arena with full report)
-        Console.WriteLine("\n   Test 2: Individual Arena Effects...");
-        report.IndividualArenaEffects = await EstimateIndividualArenaEffectsAsync(allData);
-        foreach (var (arenaId, effect) in report.IndividualArenaEffects.OrderBy(kv => kv.Key))
+        if (report.OverallSeatPositionJointTest.IsSignificant)
         {
-            Console.WriteLine($"\n      Arena {arenaId}:");
-            DisplayEffect(effect);
+            Console.WriteLine("      → Seat position DOES matter - analyzing individual positions...\n");
+
+            // Test 2: Which positions are best/worst?
+            Console.WriteLine("   Test 2: Individual Seat Position Effects...");
+            report.EachSeatVsOthersEffects = await EstimateEachSeatVsOthersEffectAsync(allData);
+
+            foreach (var (position, effect) in report.EachSeatVsOthersEffects.OrderBy(kv => kv.Key))
+            {
+                var significance = effect.IsSignificant ? "✅" : "⚠️";
+                Console.WriteLine(
+                    $"      Position {position}: {effect.AverageTreatmentEffect:+0.0%;-0.0%} {significance}");
+            }
+
+            // Identify best position
+            var bestPosition = report.EachSeatVsOthersEffects
+                .OrderByDescending(kv => kv.Value.AverageTreatmentEffect)
+                .First();
+            Console.WriteLine(
+                $"\n      🏆 Best position: {bestPosition.Key} ({bestPosition.Value.AverageTreatmentEffect:+0.0%;-0.0%})");
+        }
+        else
+        {
+            Console.WriteLine("      → Seat position does NOT matter significantly");
+            Console.WriteLine("      → Skipping individual position analysis");
         }
 
-        // Test 3: Each arena vs all others (comparative)
-        Console.WriteLine("\n   Test 3: Each Arena vs All Others (Comparative)...");
-        report.EachArenaVsOthersEffects = await EstimateEachArenaVsOthersEffectAsync(allData);
-        foreach (var (arenaId, effect) in report.EachArenaVsOthersEffects.OrderBy(kv => kv.Key))
-            Console.WriteLine(
-                $"      Arena {arenaId} vs All Others: {effect.AverageTreatmentEffect:+0.0%;-0.0%} effect ({effect.MatchedPairs} matches)");
+        // ========== ARENA - SIMPLIFIED TO 2 TESTS ==========
+        Console.WriteLine("\n3️⃣ ARENA PLACEMENT ANALYSIS (2 Tests)");
+        Console.WriteLine("═══════════════════════════════════════════════════");
 
-        // Test 4: Joint test for arena
-        Console.WriteLine("\n   Test 4: Overall Arena Joint Test...");
+        // Test 1: Does arena matter at all? (Joint test)
+        Console.WriteLine("\n   Test 1: Overall Arena Effect (Joint Test)...");
         report.OverallArenaJointTest = await TestOverallArenaEffectAsync(allData);
-        Console.WriteLine($"      Permutation test: p={report.OverallArenaJointTest.PValue:F3} " +
-                          $"{(report.OverallArenaJointTest.IsSignificant ? "✅" : "⚠️")}");
-        Console.WriteLine(
-            $"      → Arena placement {(report.OverallArenaJointTest.IsSignificant ? "DOES" : "does NOT")} matter overall");
+        Console.WriteLine($"      p-value: {report.OverallArenaJointTest.PValue:F4} " +
+                          $"{(report.OverallArenaJointTest.IsSignificant ? "✅ Significant" : "⚠️ Not Significant")}");
+
+        if (report.OverallArenaJointTest.IsSignificant)
+        {
+            Console.WriteLine("      → Arena placement DOES matter - analyzing individual arenas...\n");
+
+            // Test 2: Which arenas are best/worst?
+            Console.WriteLine("   Test 2: Individual Arena Effects...");
+            report.IndividualArenaEffects = await EstimateIndividualArenaEffectsAsync(allData);
+
+            foreach (var (arenaId, effect) in report.IndividualArenaEffects.OrderBy(kv => kv.Key))
+            {
+                var significance = effect.IsSignificant ? "✅" : "⚠️";
+                Console.WriteLine(
+                    $"      Arena {arenaId}: {effect.AverageTreatmentEffect:+0.0%;-0.0%} {significance} ({effect.MatchedPairs} matched pairs)");
+            }
+
+            // Identify best arena
+            var significantArenas = report.IndividualArenaEffects
+                .Where(kv => kv.Value.IsSignificant)
+                .OrderByDescending(kv => kv.Value.AverageTreatmentEffect)
+                .ToList();
+
+            if (significantArenas.Any())
+            {
+                var bestArena = significantArenas.First();
+                Console.WriteLine(
+                    $"\n      🏆 Best arena: {bestArena.Key} ({bestArena.Value.AverageTreatmentEffect:+0.0%;-0.0%})");
+            }
+            else
+            {
+                Console.WriteLine("\n      ⚠️ No individual arenas show significant effects");
+            }
+        }
+        else
+        {
+            Console.WriteLine("      → Arena placement does NOT matter significantly");
+            Console.WriteLine("      → Skipping individual arena analysis");
+        }
 
         // 4. Rival Strength Effect
         Console.WriteLine("\n4️⃣ Analyzing Rival Strength Effect...");
         report.RivalStrengthEffect = await EstimateRivalStrengthEffectAsync(allData);
         DisplayEffect(report.RivalStrengthEffect);
 
-        // 5. Odds Effect
+        // 5. Odds Effect + Diagnostic
         Console.WriteLine("\n5️⃣ Analyzing Odds/Favorite Status Effect...");
         report.OddsEffect = await EstimateOddsEffectAsync(allData);
         DisplayEffect(report.OddsEffect);
 
-        // 5b. Odds Diagnostic
         Console.WriteLine("\n5️⃣b Running Comprehensive Odds Diagnostic...");
         report.OddsDiagnostic = await DiagnoseOddsPatternAsync(allData);
-        Console.WriteLine($"   {report.OddsDiagnostic.DiagnosisMessage}");
 
         // 6. Interaction Effects
         Console.WriteLine("\n6️⃣ Analyzing Interaction Effects...");
         report.InteractionEffects = await AnalyzeInteractionEffectsAsync(allData);
         DisplayInteractionEffects(report.InteractionEffects);
 
-        // 7. Generate key findings and recommendations
-        Console.WriteLine("\n7️⃣ Generating Key Findings and Recommendations...");
+        // 7. Generate key findings
+        Console.WriteLine("\n7️⃣ Generating Key Findings...");
         GenerateKeyFindings(report);
 
-        // Save comprehensive report
         SaveCausalReport(report);
-
         return report;
     }
 
+    #region Core Treatment Effect Estimation
+
     public async Task<CausalEffectReport> EstimateFoodAdjustmentEffectAsync(List<CausalDataPoint>? data = null)
     {
+        // ✅ Use passed data if available, only load if null
         data ??= await LoadCausalDataAsync();
 
         // Treatment: Positive food adjustment (≥1) vs neutral/negative (≤0)
@@ -138,9 +159,9 @@ public class CausalInferenceService : ICausalInferenceService
         var matches = MatchOnCovariates(treated, control,
             d => new[]
             {
-                1.0 / Math.Max(2, d.CurrentOdds), // Normalize odds
-                d.Position / 4.0, // Normalize position (0-3)
-                d.Strength / 100.0 // Normalize strength
+                1.0 / Math.Max(2, d.CurrentOdds),
+                d.Position / 4.0,
+                d.Strength / 100.0
             });
 
         var ate = matches.Select(m => m.TreatedOutcome - m.ControlOutcome).Average();
@@ -158,102 +179,46 @@ public class CausalInferenceService : ICausalInferenceService
             TreatmentGroupSize = treated.Count,
             ControlGroupSize = control.Count,
             MatchedPairs = matches.Count,
-            IsSignificant = Math.Abs(tStat) > 1.96, // 95% confidence
+            IsSignificant = Math.Abs(tStat) > 1.96,
             ConfidenceInterval = (ate - 1.96 * standardError, ate + 1.96 * standardError)
         };
     }
-
-    public async Task<CausalEffectReport> EstimateSeatPositionEffectAsync(List<CausalDataPoint>? data = null)
-    {
-        data ??= await LoadCausalDataAsync();
-
-        // Analyze each position separately
-        var positionEffects = new Dictionary<int, double>();
-
-        for (var position = 0; position < 4; position++)
-        {
-            var inPosition = data.Where(d => d.Position == position).ToList();
-            var otherPositions = data.Where(d => d.Position != position).ToList();
-
-            var matches = MatchOnCovariates(inPosition, otherPositions,
-                d => new[]
-                {
-                    d.Strength / 100.0,
-                    d.FoodAdjustment / 3.0,
-                    1.0 / Math.Max(2, d.CurrentOdds)
-                },
-                0.15);
-
-            if (matches.Any())
-                positionEffects[position] = matches.Select(m => m.TreatedOutcome - m.ControlOutcome).Average();
-        }
-
-        // Overall position effect (position 0 vs others)
-        var position0 = data.Where(d => d.Position == 0).ToList();
-        var otherPos = data.Where(d => d.Position > 0).ToList();
-
-        var overallMatches = MatchOnCovariates(position0, otherPos,
-            d => new[]
-            {
-                d.Strength / 100.0,
-                d.FoodAdjustment / 3.0,
-                1.0 / Math.Max(2, d.CurrentOdds)
-            });
-
-        var ate = overallMatches.Select(m => m.TreatedOutcome - m.ControlOutcome).Average();
-        var standardError =
-            MathUtilities.CalculateStandardError(overallMatches.Select(m => m.TreatedOutcome - m.ControlOutcome));
-        var tStat = ate / standardError;
-
-        return new CausalEffectReport
-        {
-            TreatmentName = "Position 0 (First Seat)",
-            AverageTreatmentEffect = ate,
-            StandardError = standardError,
-            TStatistic = tStat,
-            PValue = MathUtilities.CalculatePValueFromT(tStat, overallMatches.Count),
-            TreatmentGroupSize = position0.Count,
-            ControlGroupSize = otherPos.Count,
-            MatchedPairs = overallMatches.Count,
-            IsSignificant = Math.Abs(tStat) > 1.96,
-            ConfidenceInterval = (ate - 1.96 * standardError, ate + 1.96 * standardError),
-            PositionEffects = positionEffects
-        };
-    }
-
 
     public async Task<CausalEffectReport> EstimateRivalStrengthEffectAsync(List<CausalDataPoint>? data = null)
     {
         data ??= await LoadCausalDataAsync();
 
-        // Calculate average rival strength for each observation
+        // ✅ FIX: Calculate rival strengths in memory, no N+1 queries
         var dataWithRivalStrength = new List<(CausalDataPoint Point, double AvgRivalStrength)>();
 
-        foreach (var point in data)
-        {
-            var rivals = await _context.RoundPiratePlacements
-                .Where(rpp => rpp.RoundId == point.RoundId &&
-                              rpp.ArenaId == point.ArenaId &&
-                              rpp.PirateId != point.PirateId)
-                .Join(_context.Pirates,
-                    rpp => rpp.PirateId,
-                    p => p.PirateId,
-                    (rpp, p) => p.Strength ?? 0)
-                .ToListAsync();
+        // Group by round and arena to calculate rival strengths efficiently
+        var arenaGroups = data.GroupBy(d => (d.RoundId, d.ArenaId));
 
-            var avgRivalStrength = rivals.Any() ? rivals.Average() : 0;
-            dataWithRivalStrength.Add((point, avgRivalStrength));
+        foreach (var group in arenaGroups)
+        {
+            var piratesInArena = group.ToList();
+
+            foreach (var point in piratesInArena)
+            {
+                // Calculate average rival strength from same arena (excluding self)
+                var rivals = piratesInArena.Where(p => p.PirateId != point.PirateId).ToList();
+                var avgRivalStrength = rivals.Any() ? rivals.Average(r => r.Strength) : 0;
+
+                dataWithRivalStrength.Add((point, avgRivalStrength));
+            }
         }
 
         // Treatment: Facing strong rivals (above median) vs weak rivals (below median)
-        var medianRivalStrength = dataWithRivalStrength.Select(d => d.AvgRivalStrength).OrderBy(s => s)
+        var medianRivalStrength = dataWithRivalStrength
+            .Select(d => d.AvgRivalStrength)
+            .OrderBy(s => s)
             .ElementAt(dataWithRivalStrength.Count / 2);
 
         var strongRivals = dataWithRivalStrength.Where(d => d.AvgRivalStrength >= medianRivalStrength).ToList();
         var weakRivals = dataWithRivalStrength.Where(d => d.AvgRivalStrength < medianRivalStrength).ToList();
 
         // Match on pirate characteristics
-        var matches = MatchOnCovariatesWithRivals(
+        var matches = MatchOnCovariates(
             strongRivals.Select(d => d.Point).ToList(),
             weakRivals.Select(d => d.Point).ToList(),
             d => new[]
@@ -287,12 +252,9 @@ public class CausalInferenceService : ICausalInferenceService
     {
         data ??= await LoadCausalDataAsync();
 
-        // Exclude odds of 1 (clamped) and 13 (clamped from above)
+        // Treatment: Being the favorite (odds ≤2) vs non-favorite (odds > 2, but < 13)
         var cleanData = data.Where(d => d.CurrentOdds > 1 && d.CurrentOdds < 13).ToList();
 
-        Console.WriteLine($"   Analyzing odds effect (excluding {data.Count - cleanData.Count} clamped records)...");
-
-        // Treatment: Being the favorite (odds = 2) vs non-favorite (odds > 2, but < 13)
         var favorites = cleanData.Where(d => d.CurrentOdds == 2).ToList();
         var nonFavorites = cleanData.Where(d => d.CurrentOdds > 2).ToList();
 
@@ -311,7 +273,7 @@ public class CausalInferenceService : ICausalInferenceService
             MathUtilities.CalculateStandardError(matches.Select(m => m.TreatedOutcome - m.ControlOutcome));
         var tStat = ate / standardError;
 
-        // Calculate dose-response: effect at different odds levels (excluding clamped)
+        // Calculate dose-response
         var doseResponse = CalculateOddsDoseResponse(cleanData);
 
         return new CausalEffectReport
@@ -330,86 +292,89 @@ public class CausalInferenceService : ICausalInferenceService
         };
     }
 
-    /// <summary>
-    ///     Gets individual seat position effects (each position vs all others)
-    /// </summary>
-    public async Task<Dictionary<int, CausalEffectReport>> EstimateIndividualSeatPositionEffectsAsync(
-        List<CausalDataPoint>? data = null)
+    #endregion
+
+    #region Seat Position Analysis (2 Tests)
+
+    public async Task<CausalEffectReport> TestOverallSeatPositionEffectAsync(List<CausalDataPoint>? data = null)
     {
         data ??= await LoadCausalDataAsync();
 
-        Console.WriteLine("   Analyzing each seat position individually...");
+        Console.WriteLine("   Performing permutation test for overall seat position effect...");
 
-        var positionEffects = new Dictionary<int, CausalEffectReport>();
-
-        for (var position = 0; position < 4; position++)
-        {
-            var inPosition = data.Where(d => d.Position == position).ToList();
-            var otherPositions = data.Where(d => d.Position != position).ToList();
-
-            var matches = MatchOnCovariates(inPosition, otherPositions,
-                d => new[]
-                {
-                    d.Strength / 100.0,
-                    d.FoodAdjustment / 3.0,
-                    1.0 / Math.Max(2, d.CurrentOdds)
-                },
-                0.15);
-
-            if (!matches.Any())
-            {
-                Console.WriteLine($"      Position {position}: No matches found (skipping)");
-                continue;
-            }
-
-            var ate = matches.Select(m => m.TreatedOutcome - m.ControlOutcome).Average();
-            var standardError = MathUtilities.CalculateStandardError(
-                matches.Select(m => m.TreatedOutcome - m.ControlOutcome));
-            var tStat = ate / standardError;
-
-            positionEffects[position] = new CausalEffectReport
-            {
-                TreatmentName = $"Position {position} vs All Others",
-                AverageTreatmentEffect = ate,
-                StandardError = standardError,
-                TStatistic = tStat,
-                PValue = MathUtilities.CalculatePValueFromT(tStat, matches.Count),
-                TreatmentGroupSize = inPosition.Count,
-                ControlGroupSize = otherPositions.Count,
-                MatchedPairs = matches.Count,
-                IsSignificant = Math.Abs(tStat) > 1.96,
-                ConfidenceInterval = (ate - 1.96 * standardError, ate + 1.96 * standardError)
-            };
-
-            Console.WriteLine($"      Position {position}: {ate:+0.0%;-0.0%} effect ({matches.Count} matches)");
+        var outcomes = data.Select(d => d.IsWinner ? 1.0 : 0.0).ToArray();
+        var positions = data.Select(d => d.Position).ToArray();
+        
+        var actualRates = new double[4];
+        var counts = new int[4];
+        for (int i = 0; i < outcomes.Length; i++) {
+            actualRates[positions[i]] += outcomes[i];
+            counts[positions[i]]++;
         }
+        
+        for (int i = 0; i < 4; i++) actualRates[i] /= Math.Max(1, counts[i]);
+        var actualVariance = MathUtilities.CalculateVariance(actualRates);
 
-        return positionEffects;
+        var random = new Random(42);
+        var permutationVariances = new double[1000];
+
+        for (var i = 0; i < 1000; i++)
+        {
+            random.Shuffle(positions);
+            
+            var pRates = new double[4];
+            var pCounts = new int[4];
+            for (int j = 0; j < outcomes.Length; j++) {
+                pRates[positions[j]] += outcomes[j];
+                pCounts[positions[j]]++;
+            }
+            for (int k = 0; k < 4; k++) pRates[k] /= Math.Max(1, pCounts[k]);
+
+            permutationVariances[i] = MathUtilities.CalculateVariance(pRates);
+        }
+        
+        // P-value calculation
+        var pValue = permutationVariances.Count(pv => pv >= actualVariance) / 1000.0;
+
+
+        var avgEffect = Math.Sqrt(actualVariance);
+        var standardError = Math.Sqrt(MathUtilities.CalculateVariance(permutationVariances));
+
+        return new CausalEffectReport
+        {
+            TreatmentName = "Overall Seat Position Effect (Joint Permutation Test)",
+            AverageTreatmentEffect = avgEffect,
+            StandardError = standardError,
+            TStatistic = avgEffect / standardError,
+            PValue = pValue,
+            TreatmentGroupSize = data.Count,
+            ControlGroupSize = data.Count,
+            MatchedPairs = 1000,
+            IsSignificant = pValue < 0.05,
+            ConfidenceInterval = (0, avgEffect + 1.96 * standardError)
+        };
     }
 
-// Test 3: Each seat vs all others (comparative)
     public async Task<Dictionary<int, CausalEffectReport>> EstimateEachSeatVsOthersEffectAsync(
         List<CausalDataPoint>? data = null)
     {
         data ??= await LoadCausalDataAsync();
 
-        Console.WriteLine("   Analyzing each seat position vs all others...");
+        Console.WriteLine("   Analyzing each seat position vs pooled others...");
 
         var seatEffects = new Dictionary<int, CausalEffectReport>();
-
+        
+        var candidates = data.Select(d => new CausalMatchCandidate(
+            d, 
+            new[] { d.Strength / 100.0, d.FoodAdjustment / 3.0, 1.0 / Math.Max(2, d.CurrentOdds) }
+        )).ToList();
+        
         for (var position = 0; position < 4; position++)
         {
-            var inPosition = data.Where(d => d.Position == position).ToList();
-            var otherPositions = data.Where(d => d.Position != position).ToList();
+            var treated = candidates.Where(c => c.Data.Position == position).ToList();
+            var control = candidates.Where(c => c.Data.Position != position).ToList();
 
-            var matches = MatchOnCovariates(inPosition, otherPositions,
-                d => new[]
-                {
-                    d.Strength / 100.0,
-                    d.FoodAdjustment / 3.0,
-                    1.0 / Math.Max(2, d.CurrentOdds)
-                },
-                0.15);
+            var matches = MatchOptimized(treated, control, 0.15);
 
             if (!matches.Any())
             {
@@ -424,18 +389,18 @@ public class CausalInferenceService : ICausalInferenceService
 
             seatEffects[position] = new CausalEffectReport
             {
-                TreatmentName = $"Position {position} vs All Others",
+                TreatmentName = $"Position {position} vs Pooled Others",
                 AverageTreatmentEffect = ate,
                 StandardError = standardError,
                 TStatistic = tStat,
                 PValue = MathUtilities.CalculatePValueFromT(tStat, matches.Count),
-                TreatmentGroupSize = inPosition.Count,
-                ControlGroupSize = otherPositions.Count,
+                TreatmentGroupSize = treated.Count,
+                ControlGroupSize = control.Count,
                 MatchedPairs = matches.Count,
                 IsSignificant = Math.Abs(tStat) > 1.96,
                 ConfidenceInterval = (ate - 1.96 * standardError, ate + 1.96 * standardError)
             };
-
+            
             Console.WriteLine(
                 $"      Position {position} vs All Others: {ate:+0.0%;-0.0%} effect ({matches.Count} matches)");
         }
@@ -443,197 +408,10 @@ public class CausalInferenceService : ICausalInferenceService
         return seatEffects;
     }
 
-// Test 4: Joint test for seat position
-    public async Task<CausalEffectReport> TestOverallSeatPositionEffectAsync(List<CausalDataPoint>? data = null)
-    {
-        data ??= await LoadCausalDataAsync();
+    #endregion
 
-        Console.WriteLine("   Performing permutation test for overall seat position effect...");
+    #region Arena Analysis (2 Tests)
 
-        // Calculate actual variance between positions
-        var positionWinRates = data.GroupBy(d => d.Position)
-            .Select(g => g.Average(d => d.IsWinner ? 1.0 : 0.0))
-            .ToList();
-
-        var actualVariance = MathUtilities.CalculateVariance(positionWinRates);
-
-        // Permutation test: shuffle position assignments 1000 times
-        var random = new Random(42);
-        var permutationVariances = new List<double>();
-        var positions = data.Select(d => d.Position).ToList();
-
-        for (var i = 0; i < 1000; i++)
-        {
-            var shuffledPositions = positions.OrderBy(_ => random.Next()).ToList();
-            var shuffledData = data.Select((d, idx) => new
-            {
-                Position = shuffledPositions[idx], d.IsWinner
-            }).ToList();
-
-            var shuffledWinRates = shuffledData.GroupBy(d => d.Position)
-                .Select(g => g.Average(d => d.IsWinner ? 1.0 : 0.0))
-                .ToList();
-
-            permutationVariances.Add(MathUtilities.CalculateVariance(shuffledWinRates));
-        }
-
-        // P-value: proportion of permuted variances >= actual variance
-        var pValue = permutationVariances.Count(pv => pv >= actualVariance) / 1000.0;
-
-        var avgEffect = Math.Sqrt(actualVariance);
-        var standardError = Math.Sqrt(MathUtilities.CalculateVariance(permutationVariances));
-
-        return new CausalEffectReport
-        {
-            TreatmentName = "Overall Seat Position Effect (Joint Test)",
-            AverageTreatmentEffect = avgEffect,
-            StandardError = standardError,
-            TStatistic = avgEffect / standardError,
-            PValue = pValue,
-            TreatmentGroupSize = data.Count,
-            ControlGroupSize = 1000, // number of permutations
-            MatchedPairs = positionWinRates.Count,
-            IsSignificant = pValue < 0.05,
-            ConfidenceInterval = (0, avgEffect + 1.96 * standardError)
-        };
-    }
-
-
-    public async Task<Dictionary<int, CausalEffectReport>> EstimateIndividualArenaEffectsAsync(
-        List<CausalDataPoint>? data = null)
-    {
-        data ??= await LoadCausalDataAsync();
-
-        Console.WriteLine("   Analyzing each arena individually...");
-
-        var arenaEffects = new Dictionary<int, CausalEffectReport>();
-
-        for (var arenaId = 0; arenaId < 5; arenaId++)
-            arenaEffects[arenaId] = await EstimateArenaEffectAsync(data, arenaId);
-
-        return arenaEffects;
-    }
-
-// Rename existing method for consistency
-    public async Task<CausalEffectReport> EstimateArenaEffectAsync(List<CausalDataPoint>? data, int targetArenaId)
-    {
-        data ??= await LoadCausalDataAsync();
-
-        // Find pirates who appear in multiple arenas (for within-pirate comparison)
-        var piratesInMultipleArenas = data
-            .GroupBy(d => d.PirateId)
-            .Where(g => g.Select(d => d.ArenaId).Distinct().Count() > 1)
-            .Select(g => g.Key)
-            .ToList();
-
-        Console.WriteLine(
-            $"      Arena {targetArenaId}: Found {piratesInMultipleArenas.Count} pirates appearing in multiple arenas");
-
-        var inTargetArena = data.Where(d => d.ArenaId == targetArenaId && piratesInMultipleArenas.Contains(d.PirateId))
-            .ToList();
-        var inOtherArenas = data.Where(d => d.ArenaId != targetArenaId && piratesInMultipleArenas.Contains(d.PirateId))
-            .ToList();
-
-        // Match same pirate across arenas
-        var matches = new List<MatchedPair>();
-
-        foreach (var target in inTargetArena)
-        {
-            var samePirateOtherArena = inOtherArenas
-                .Where(d => d.PirateId == target.PirateId &&
-                            Math.Abs(d.FoodAdjustment - target.FoodAdjustment) <= 1 &&
-                            Math.Abs(d.Position - target.Position) <= 1)
-                .OrderBy(d => Math.Abs(d.CurrentOdds - target.CurrentOdds))
-                .FirstOrDefault();
-
-            if (samePirateOtherArena != null)
-                matches.Add(new MatchedPair
-                {
-                    TreatedOutcome = target.IsWinner ? 1.0 : 0.0,
-                    ControlOutcome = samePirateOtherArena.IsWinner ? 1.0 : 0.0,
-                    PropensityScore = 0.5
-                });
-        }
-
-        var ate = matches.Any() ? matches.Select(m => m.TreatedOutcome - m.ControlOutcome).Average() : 0;
-        var standardError = matches.Any()
-            ? MathUtilities.CalculateStandardError(matches.Select(m => m.TreatedOutcome - m.ControlOutcome))
-            : 0;
-        var tStat = standardError > 0 ? ate / standardError : 0;
-
-        return new CausalEffectReport
-        {
-            TreatmentName = $"Arena {targetArenaId} Placement",
-            AverageTreatmentEffect = ate,
-            StandardError = standardError,
-            TStatistic = tStat,
-            PValue = MathUtilities.CalculatePValueFromT(tStat, matches.Count),
-            TreatmentGroupSize = inTargetArena.Count,
-            ControlGroupSize = inOtherArenas.Count,
-            MatchedPairs = matches.Count,
-            IsSignificant = Math.Abs(tStat) > 1.96 && matches.Count > 30,
-            ConfidenceInterval = (ate - 1.96 * standardError, ate + 1.96 * standardError)
-        };
-    }
-
-// Test 3: Each arena vs all others
-    public async Task<Dictionary<int, CausalEffectReport>> EstimateEachArenaVsOthersEffectAsync(
-        List<CausalDataPoint>? data = null)
-    {
-        data ??= await LoadCausalDataAsync();
-
-        Console.WriteLine("   Analyzing each arena vs all others...");
-
-        var arenaEffects = new Dictionary<int, CausalEffectReport>();
-
-        for (var arenaId = 0; arenaId < 5; arenaId++)
-        {
-            var inArena = data.Where(d => d.ArenaId == arenaId).ToList();
-            var otherArenas = data.Where(d => d.ArenaId != arenaId).ToList();
-
-            var matches = MatchOnCovariates(inArena, otherArenas,
-                d => new[]
-                {
-                    d.Strength / 100.0,
-                    d.FoodAdjustment / 3.0,
-                    d.Position / 3.0,
-                    1.0 / Math.Max(2, d.CurrentOdds)
-                },
-                0.15);
-
-            if (!matches.Any())
-            {
-                Console.WriteLine($"      Arena {arenaId}: No matches found (skipping)");
-                continue;
-            }
-
-            var ate = matches.Select(m => m.TreatedOutcome - m.ControlOutcome).Average();
-            var standardError = MathUtilities.CalculateStandardError(
-                matches.Select(m => m.TreatedOutcome - m.ControlOutcome));
-            var tStat = ate / standardError;
-
-            arenaEffects[arenaId] = new CausalEffectReport
-            {
-                TreatmentName = $"Arena {arenaId} vs All Others",
-                AverageTreatmentEffect = ate,
-                StandardError = standardError,
-                TStatistic = tStat,
-                PValue = MathUtilities.CalculatePValueFromT(tStat, matches.Count),
-                TreatmentGroupSize = inArena.Count,
-                ControlGroupSize = otherArenas.Count,
-                MatchedPairs = matches.Count,
-                IsSignificant = Math.Abs(tStat) > 1.96,
-                ConfidenceInterval = (ate - 1.96 * standardError, ate + 1.96 * standardError)
-            };
-
-            Console.WriteLine(
-                $"      Arena {arenaId} vs All Others: {ate:+0.0%;-0.0%} effect ({matches.Count} matches)");
-        }
-
-        return arenaEffects;
-    }
-
-// Test 4: Joint test for arena (already provided earlier)
     public async Task<CausalEffectReport> TestOverallArenaEffectAsync(List<CausalDataPoint>? data = null)
     {
         data ??= await LoadCausalDataAsync();
@@ -647,321 +425,117 @@ public class CausalInferenceService : ICausalInferenceService
 
         var actualVariance = MathUtilities.CalculateVariance(arenaWinRates);
 
-        // Permutation test: shuffle arena assignments 1000 times
+        // ✅ FIX: Use primitive arrays to reduce GC pressure
+        var arenaIds = data.Select(d => d.ArenaId).ToArray();
+        var outcomes = data.Select(d => d.IsWinner ? 1.0 : 0.0).ToArray();
         var random = new Random(42);
-        var permutationVariances = new List<double>();
-        var arenaIds = data.Select(d => d.ArenaId).ToList();
+
+        var permutationVariances = new double[1000];
 
         for (var i = 0; i < 1000; i++)
         {
-            var shuffledArenas = arenaIds.OrderBy(_ => random.Next()).ToList();
-            var shuffledData = data.Select((d, idx) => new
+            // Fisher-Yates shuffle
+            var shuffledArenas = (int[])arenaIds.Clone();
+            for (var j = shuffledArenas.Length - 1; j > 0; j--)
             {
-                ArenaId = shuffledArenas[idx], d.IsWinner
-            }).ToList();
+                var k = random.Next(j + 1);
+                (shuffledArenas[j], shuffledArenas[k]) = (shuffledArenas[k], shuffledArenas[j]);
+            }
 
-            var shuffledWinRates = shuffledData.GroupBy(d => d.ArenaId)
-                .Select(g => g.Average(d => d.IsWinner ? 1.0 : 0.0))
-                .ToList();
+            // ✅ Calculate variance using arrays
+            var arenaGroups = new Dictionary<int, List<double>>();
+            for (var j = 0; j < shuffledArenas.Length; j++)
+            {
+                var arena = shuffledArenas[j];
+                if (!arenaGroups.ContainsKey(arena))
+                    arenaGroups[arena] = new List<double>();
+                arenaGroups[arena].Add(outcomes[j]);
+            }
 
-            permutationVariances.Add(MathUtilities.CalculateVariance(shuffledWinRates));
+            var shuffledWinRates = arenaGroups.Values.Select(list => list.Average()).ToArray();
+            permutationVariances[i] = MathUtilities.CalculateVariance(shuffledWinRates);
         }
 
-        // P-value: proportion of permuted variances >= actual variance
-        var pValue = permutationVariances.Count(pv => pv >= actualVariance) / 1000.0;
+        var countGreaterOrEqual = 0;
+        for (var i = 0; i < permutationVariances.Length; i++)
+            if (permutationVariances[i] >= actualVariance)
+                countGreaterOrEqual++;
+        var pValue = countGreaterOrEqual / 1000.0;
 
         var avgEffect = Math.Sqrt(actualVariance);
         var standardError = Math.Sqrt(MathUtilities.CalculateVariance(permutationVariances));
 
         return new CausalEffectReport
         {
-            TreatmentName = "Overall Arena Assignment Effect (Joint Test)",
+            TreatmentName = "Overall Arena Assignment Effect (Joint Permutation Test)",
             AverageTreatmentEffect = avgEffect,
             StandardError = standardError,
             TStatistic = avgEffect / standardError,
             PValue = pValue,
             TreatmentGroupSize = data.Count,
-            ControlGroupSize = 1000,
-            MatchedPairs = arenaWinRates.Count,
+            ControlGroupSize = data.Count,
+            MatchedPairs = 1000,
             IsSignificant = pValue < 0.05,
             ConfidenceInterval = (0, avgEffect + 1.96 * standardError)
         };
     }
 
-    public async Task<OddsDiagnosticReport> DiagnoseOddsPatternAsync(List<CausalDataPoint>? data = null)
-    {
-        data ??= await LoadCausalDataAsync(true);
-
-        Console.WriteLine("\n═══════════════════════════════════════════════════");
-        Console.WriteLine("🔍 ODDS PATTERN DIAGNOSTIC");
-        Console.WriteLine("═══════════════════════════════════════════════════\n");
-
-        Console.WriteLine("ℹ️  Note: Odds of 1:1 are placeholders (no bet) and excluded from analysis");
-        Console.WriteLine("ℹ️  Note: Odds of 13:1 redistributed to estimated true odds (13-25:1)\n");
-
-        // Check if any 1:1 odds slipped through (shouldn't happen)
-        var onesCount = data.Count(d => d.CurrentOdds == 1);
-        if (onesCount > 0)
-            Console.WriteLine($"⚠️  WARNING: Found {onesCount} records with 1:1 odds (should be filtered!)");
-
-        // Find minimum odds in dataset
-        var minOdds = data.Any() ? data.Min(d => d.CurrentOdds) : 0;
-        Console.WriteLine($"   Minimum odds in dataset: {minOdds}:1 (should be 2:1 or higher)");
-
-        var oddsBuckets = data.GroupBy(d => d.CurrentOdds)
-            .OrderBy(g => g.Key)
-            .Select(g => new OddsBucket
-            {
-                Odds = g.Key,
-                Count = g.Count(),
-                Wins = g.Count(d => d.IsWinner),
-                WinRate = g.Average(d => d.IsWinner ? 1.0 : 0.0),
-                ImpliedProbability = 1.0 / (g.Key + 1.0),
-                AvgStrength = g.Average(d => d.Strength),
-                AvgFoodAdjustment = g.Average(d => d.FoodAdjustment),
-                AvgPosition = g.Average(d => d.Position)
-            })
-            .ToList();
-
-        Console.WriteLine("Odds Analysis by Bucket:");
-        Console.WriteLine("───────────────────────────────────────────────────────────────────────");
-        Console.WriteLine(
-            $"{"Odds",-8} {"Count",-8} {"Wins",-8} {"Win%",-10} {"Expected%",-12} {"Diff",-10} {"AvgStr",-8} {"AvgFood",-8}");
-        Console.WriteLine("───────────────────────────────────────────────────────────────────────");
-
-        foreach (var bucket in oddsBuckets)
-        {
-            var diff = bucket.WinRate - bucket.ImpliedProbability;
-
-            var warning = "";
-            if (bucket.Odds >= 13 && bucket.Odds <= 25)
-                warning = " (redistributed from clamped 13:1)";
-
-            Console.WriteLine($"{bucket.Odds}:1      {bucket.Count,-8} {bucket.Wins,-8} " +
-                              $"{bucket.WinRate,-10:P2} {bucket.ImpliedProbability,-12:P2} " +
-                              $"{diff,-10:+0.0%;-0.0%} {bucket.AvgStrength,-8:F1} {bucket.AvgFoodAdjustment,-8:F2}{warning}");
-        }
-
-
-        // Now correlation should be clean across ALL odds
-        var oddsValues = data.Select(d => (double)d.CurrentOdds).ToList();
-        var outcomes = data.Select(d => d.IsWinner ? 1.0 : 0.0).ToList();
-        var correlation = MathUtilities.CalculateCorrelation(oddsValues, outcomes);
-
-        Console.WriteLine("\n📊 Correlation between Odds and Winning (with redistribution):");
-        Console.WriteLine($"   Correlation: {correlation:F4}");
-        Console.WriteLine(correlation > 0
-            ? "   ⚠️  PROBLEM: Positive correlation means HIGHER odds = MORE wins (INVERTED!)"
-            : "   ✅ Expected: Negative correlation (higher odds = fewer wins)");
-
-        // Analysis across the full spectrum
-        Console.WriteLine("\n📊 Win Rate Analysis Across Odds Spectrum:");
-        var favorites = data.Where(d => d.CurrentOdds == 2).ToList();
-        var midRange = data.Where(d => d.CurrentOdds >= 5 && d.CurrentOdds <= 7).ToList();
-        var longshots = data.Where(d => d.CurrentOdds >= 10 && d.CurrentOdds <= 13).ToList();
-        var extremeLongshots = data.Where(d => d.CurrentOdds >= 15).ToList();
-
-        Console.WriteLine(
-            $"   Favorites (2:1):        {favorites.Count(d => d.IsWinner),4} / {favorites.Count,5} = {(favorites.Any() ? favorites.Average(d => d.IsWinner ? 1.0 : 0.0) : 0):P2} (expected ~33%)");
-        Console.WriteLine(
-            $"   Mid-range (5-7:1):      {midRange.Count(d => d.IsWinner),4} / {midRange.Count,5} = {(midRange.Any() ? midRange.Average(d => d.IsWinner ? 1.0 : 0.0) : 0):P2}");
-        Console.WriteLine(
-            $"   Longshots (10-13:1):    {longshots.Count(d => d.IsWinner),4} / {longshots.Count,5} = {(longshots.Any() ? longshots.Average(d => d.IsWinner ? 1.0 : 0.0) : 0):P2}");
-        Console.WriteLine(
-            $"   Extreme (15-25+:1):     {extremeLongshots.Count(d => d.IsWinner),4} / {extremeLongshots.Count,5} = {(extremeLongshots.Any() ? extremeLongshots.Average(d => d.IsWinner ? 1.0 : 0.0) : 0):P2}");
-
-        return new OddsDiagnosticReport
-        {
-            OddsBuckets = oddsBuckets,
-            CorrelationWithWinning = correlation,
-            IsPatternInverted = correlation > 0,
-            TotalObservations = data.Count
-        };
-    }
-    
-    
-
-// Helper method to generate key findings
-    private void GenerateKeyFindings(ComprehensiveCausalReport report)
-    {
-        report.KeyFindings.Clear();
-        report.Recommendations.Clear();
-
-        // Food adjustment findings
-        if (report.FoodAdjustmentEffect.IsSignificant)
-        {
-            report.KeyFindings.Add(
-                $"Food adjustment has a {report.FoodAdjustmentEffect.AverageTreatmentEffect:+0.0%;-0.0%} causal effect on win probability");
-            if (report.FoodAdjustmentEffect.AverageTreatmentEffect > 0.05)
-                report.Recommendations.Add(
-                    "Strongly prioritize pirates with positive food adjustments in betting strategies");
-        }
-        else
-        {
-            report.KeyFindings.Add("Food adjustment shows weak causal evidence despite correlation");
-        }
-
-        // Seat position findings
-        if (report.OverallSeatPositionJointTest?.IsSignificant == true)
-        {
-            report.KeyFindings.Add("Seat position has significant causal impact on outcomes");
-
-            // Find best and worst positions
-            var positionEffects = report.EachSeatVsOthersEffects
-                .OrderByDescending(kv => kv.Value.AverageTreatmentEffect)
-                .ToList();
-
-            if (positionEffects.Any())
-            {
-                var bestPos = positionEffects.First();
-                var worstPos = positionEffects.Last();
-
-                report.KeyFindings.Add(
-                    $"Position {bestPos.Key} shows strongest advantage ({bestPos.Value.AverageTreatmentEffect:+0.0%;-0.0%})");
-                report.KeyFindings.Add(
-                    $"Position {worstPos.Key} shows strongest disadvantage ({worstPos.Value.AverageTreatmentEffect:+0.0%;-0.0%})");
-
-                report.Recommendations.Add($"Weight Position {bestPos.Key} heavily in model predictions");
-                report.Recommendations.Add($"Adjust expectations downward for Position {worstPos.Key}");
-            }
-        }
-        else
-        {
-            report.KeyFindings.Add("Seat position shows no significant causal effect overall");
-        }
-
-        // Arena findings
-        if (report.OverallArenaJointTest?.IsSignificant == true)
-        {
-            report.KeyFindings.Add("Arena placement has significant causal impact on outcomes");
-
-            var significantArenas = report.IndividualArenaEffects
-                .Where(kv => kv.Value.IsSignificant)
-                .OrderByDescending(kv => Math.Abs(kv.Value.AverageTreatmentEffect))
-                .ToList();
-
-            if (significantArenas.Any())
-            {
-                var mostImpactful = significantArenas.First();
-                report.KeyFindings.Add(
-                    $"Arena {mostImpactful.Key} shows strongest effect ({mostImpactful.Value.AverageTreatmentEffect:+0.0%;-0.0%})");
-                report.Recommendations.Add("Consider arena-specific adjustments in betting strategy");
-            }
-        }
-        else
-        {
-            report.KeyFindings.Add("Arena placement shows no significant causal effect overall");
-        }
-
-        // Rival strength findings
-        if (report.RivalStrengthEffect.IsSignificant)
-        {
-            var effect = report.RivalStrengthEffect.AverageTreatmentEffect;
-            report.KeyFindings.Add(
-                $"Strong rivals {(effect < 0 ? "reduce" : "increase")} win probability by {Math.Abs(effect):0.0%}");
-
-            if (Math.Abs(effect) > 0.05)
-                report.Recommendations.Add(
-                    "Head-to-head matchup analysis is critical - include detailed rival analysis");
-        }
-
-        // Odds findings
-        if (report.OddsEffect.IsSignificant)
-        {
-            report.KeyFindings.Add(
-                $"Favorite status has {report.OddsEffect.AverageTreatmentEffect:+0.0%;-0.0%} causal effect");
-
-            if (report.OddsEffect.DoseResponse != null && report.OddsEffect.DoseResponse.Any())
-            {
-                var bestValue = report.OddsEffect.DoseResponse
-                    .Select(kv => new { Odds = kv.Key, Value = kv.Value / (1.0 / (kv.Key + 1.0)) })
-                    .OrderByDescending(x => x.Value)
-                    .FirstOrDefault();
-
-                if (bestValue != null && bestValue.Value > 1.1)
-                    report.Recommendations.Add($"Pirates at {bestValue.Odds}:1 odds show best value for betting");
-            }
-        }
-
-        // Odds diagnostic findings
-        if (report.OddsDiagnostic?.IsPatternInverted == true)
-        {
-            report.KeyFindings.Add("⚠️ WARNING: Odds pattern appears inverted or incorrect in data");
-            report.Recommendations.Add("URGENT: Investigate odds data quality before making betting decisions");
-        }
-
-        // Interaction findings
-        var strongSynergies = report.InteractionEffects
-            .Where(kv => kv.Value.IsSynergistic && Math.Abs(kv.Value.InteractionStrength) > 0.03)
-            .ToList();
-
-        var strongAntagonisms = report.InteractionEffects
-            .Where(kv => kv.Value.IsAntagonistic && Math.Abs(kv.Value.InteractionStrength) > 0.03)
-            .ToList();
-
-        if (strongSynergies.Any())
-        {
-            report.KeyFindings.Add($"Found {strongSynergies.Count} strong synergistic effect combinations");
-            foreach (var (key, effect) in strongSynergies)
-                report.Recommendations.Add(
-                    $"Prioritize bets combining {effect.Name} (synergy: {effect.InteractionStrength:+0.0%;-0.0%})");
-        }
-
-        if (strongAntagonisms.Any())
-        {
-            report.KeyFindings.Add($"Found {strongAntagonisms.Count} strong antagonistic effect combinations");
-            foreach (var (key, effect) in strongAntagonisms)
-                report.Recommendations.Add(
-                    $"Avoid combining {effect.Name} (reduces effect by {-effect.InteractionStrength:0.0%})");
-        }
-
-        // Display findings
-        Console.WriteLine("\n📋 KEY FINDINGS:");
-        foreach (var finding in report.KeyFindings) Console.WriteLine($"   • {finding}");
-
-        Console.WriteLine("\n💡 RECOMMENDATIONS:");
-        foreach (var rec in report.Recommendations) Console.WriteLine($"   → {rec}");
-    }
-
-// Make sure you also have the SaveCausalReport method
-    private void SaveCausalReport(ComprehensiveCausalReport report)
-    {
-        Directory.CreateDirectory("Reports");
-        var fileName = Path.Combine("Reports", $"causal_analysis_{DateTime.UtcNow:yyyyMMdd_HHmmss}.json");
-
-        var json = JsonSerializer.Serialize(report, new JsonSerializerOptions { WriteIndented = true });
-        File.WriteAllText(fileName, json);
-
-        Console.WriteLine($"\n📄 Comprehensive causal analysis report saved to {fileName}");
-    }
-
-    public async Task<CausalEffectReport> EstimateArenaPlacementEffectAsync(List<CausalDataPoint>? data,
-        int targetArenaId)
+    public async Task<Dictionary<int, CausalEffectReport>> EstimateIndividualArenaEffectsAsync(
+        List<CausalDataPoint>? data = null)
     {
         data ??= await LoadCausalDataAsync();
 
-        // Find pirates who appear in multiple arenas (for within-pirate comparison)
-        var piratesInMultipleArenas = data
+        Console.WriteLine("   Analyzing each arena individually...");
+
+        var arenaEffects = new Dictionary<int, CausalEffectReport>();
+
+        for (var arenaId = 1; arenaId <= 5; arenaId++)
+            arenaEffects[arenaId] = await EstimateArenaEffectAsync(data, arenaId);
+
+        return arenaEffects;
+    }
+
+    private async Task<CausalEffectReport> EstimateArenaEffectAsync(List<CausalDataPoint> data, int targetArenaId)
+    {
+        // Step 1: Identify pirates appearing in multiple arenas (single pass)
+        var pirateArenas = new Dictionary<int, HashSet<int>>();
+        foreach (var point in data)
+        {
+            if (!pirateArenas.ContainsKey(point.PirateId))
+                pirateArenas[point.PirateId] = new HashSet<int>();
+            pirateArenas[point.PirateId].Add(point.ArenaId);
+        }
+
+        var piratesInMultipleArenas = pirateArenas
+            .Where(kv => kv.Value.Count > 1)
+            .Select(kv => kv.Key)
+            .ToHashSet();
+
+        Console.WriteLine(
+            $"      Arena {targetArenaId}: Found {piratesInMultipleArenas.Count} pirates in multiple arenas");
+
+        // Step 2: Build indexed lookups for O(1) access
+        var targetArenaData = data
+            .Where(d => d.ArenaId == targetArenaId && piratesInMultipleArenas.Contains(d.PirateId))
+            .ToList();
+
+        // ✅ Index other arenas by pirate for O(1) lookup (not O(N) nested loop)
+        var otherArenasLookup = data
+            .Where(d => d.ArenaId != targetArenaId && piratesInMultipleArenas.Contains(d.PirateId))
             .GroupBy(d => d.PirateId)
-            .Where(g => g.Select(d => d.ArenaId).Distinct().Count() > 1)
-            .Select(g => g.Key)
-            .ToList();
+            .ToDictionary(g => g.Key, g => g.ToList());
 
-        Console.WriteLine($"   Found {piratesInMultipleArenas.Count} pirates appearing in multiple arenas");
-
-        var inTargetArena = data.Where(d => d.ArenaId == targetArenaId && piratesInMultipleArenas.Contains(d.PirateId))
-            .ToList();
-        var inOtherArenas = data.Where(d => d.ArenaId != targetArenaId && piratesInMultipleArenas.Contains(d.PirateId))
-            .ToList();
-
-        // Match same pirate across arenas
+        // Step 3: Match using dictionary lookup (was O(N*M), now O(N))
         var matches = new List<MatchedPair>();
 
-        foreach (var target in inTargetArena)
+        foreach (var target in targetArenaData)
         {
-            var samePirateOtherArena = inOtherArenas
-                .Where(d => d.PirateId == target.PirateId &&
-                            Math.Abs(d.FoodAdjustment - target.FoodAdjustment) <= 1 &&
+            if (!otherArenasLookup.TryGetValue(target.PirateId, out var candidateMatches))
+                continue;
+
+            // Find best match for this pirate from other arenas
+            var samePirateOtherArena = candidateMatches
+                .Where(d => Math.Abs(d.FoodAdjustment - target.FoodAdjustment) <= 1 &&
                             Math.Abs(d.Position - target.Position) <= 1)
                 .OrderBy(d => Math.Abs(d.CurrentOdds - target.CurrentOdds))
                 .FirstOrDefault();
@@ -988,36 +562,21 @@ public class CausalInferenceService : ICausalInferenceService
             StandardError = standardError,
             TStatistic = tStat,
             PValue = MathUtilities.CalculatePValueFromT(tStat, matches.Count),
-            TreatmentGroupSize = inTargetArena.Count,
-            ControlGroupSize = inOtherArenas.Count,
+            TreatmentGroupSize = targetArenaData.Count,
+            ControlGroupSize = otherArenasLookup.Values.Sum(list => list.Count),
             MatchedPairs = matches.Count,
             IsSignificant = Math.Abs(tStat) > 1.96 && matches.Count > 30,
             ConfidenceInterval = (ate - 1.96 * standardError, ate + 1.96 * standardError)
         };
     }
 
-    private Dictionary<int, double> CalculateOddsDoseResponse(List<CausalDataPoint> data)
-    {
-        var doseResponse = new Dictionary<int, double>();
+    #endregion
 
-        // Group by odds levels (excluding clamped values)
-        var oddsLevels = new[] { 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12 };
 
-        foreach (var oddsLevel in oddsLevels)
-        {
-            var atOdds = data.Where(d => d.CurrentOdds == oddsLevel).ToList();
-            if (atOdds.Count < 10) continue;
-
-            var winRate = atOdds.Average(d => d.IsWinner ? 1.0 : 0.0);
-            doseResponse[oddsLevel] = winRate;
-        }
-
-        return doseResponse;
-    }
+    #region Helper Methods (continued)
 
     private async Task<List<CausalDataPoint>> LoadCausalDataAsync(bool redistributeClamped = true)
     {
-        // Load all data separately and join in memory
         var roundResults = await _context.RoundResults
             .Where(rr => rr.IsComplete && rr.RoundId.HasValue)
             .Select(rr => new
@@ -1030,7 +589,10 @@ public class CausalInferenceService : ICausalInferenceService
             .ToListAsync();
 
         var roundPlacements = await _context.RoundPiratePlacements
-            .Where(rpp => rpp.RoundId.HasValue && rpp.ArenaId.HasValue && rpp.PirateId.HasValue)
+            .Where(rpp => rpp.RoundId.HasValue &&
+                          rpp.ArenaId.HasValue &&
+                          rpp.PirateId.HasValue &&
+                          (rpp.CurrentOdds ?? rpp.StartingOdds) > 1) // Exclude 1:1 placeholders
             .Select(rpp => new
             {
                 RoundId = rpp.RoundId!.Value,
@@ -1051,7 +613,6 @@ public class CausalInferenceService : ICausalInferenceService
             })
             .ToListAsync();
 
-        // Create lookups for fast in-memory joins
         var placementLookup = roundPlacements.ToDictionary(
             rpp => (rpp.RoundId, rpp.ArenaId, rpp.PirateId),
             rpp => rpp
@@ -1059,7 +620,6 @@ public class CausalInferenceService : ICausalInferenceService
 
         var pirateLookup = pirates.ToDictionary(p => p.PirateId, p => p);
 
-        // Join in memory
         var causalData = new List<CausalDataPoint>();
 
         foreach (var result in roundResults)
@@ -1068,10 +628,6 @@ public class CausalInferenceService : ICausalInferenceService
 
             if (placementLookup.TryGetValue(key, out var placement) &&
                 pirateLookup.TryGetValue(result.PirateId, out var pirate))
-            {
-                // NORMALIZE ODDS: Treat 1:1 as 2:1 (game minimum)
-                var normalizedOdds = Math.Max(2, placement.CurrentOdds);
-
                 causalData.Add(new CausalDataPoint
                 {
                     RoundId = result.RoundId.Value,
@@ -1079,74 +635,29 @@ public class CausalInferenceService : ICausalInferenceService
                     PirateId = result.PirateId,
                     IsWinner = result.IsWinner,
                     FoodAdjustment = placement.PirateFoodAdjustment,
-                    CurrentOdds = normalizedOdds,
+                    CurrentOdds = placement.CurrentOdds,
                     Position = placement.Position,
                     Strength = pirate.Strength,
                     Weight = pirate.Weight
                 });
-            }
         }
 
-        Console.WriteLine($"   Loaded {causalData.Count} causal data points (odds normalized: 1:1 → 2:1)");
+        Console.WriteLine($"   Loaded {causalData.Count} causal data points (1:1 odds excluded)");
 
-        // REDISTRIBUTE CLAMPED 13:1 ODDS
         if (redistributeClamped) causalData = SplitClamped13IntoSubBuckets(causalData);
-        // OR use: causalData = RedistributeClamped13Odds(causalData);
+
         return causalData;
     }
 
-    /// <summary>
-    ///     Adjusts win rates for clamped 13:1 odds using theoretical expectations
-    /// </summary>
-    private Dictionary<int, double> CalculateAdjustedWinRates(List<CausalDataPoint> data)
-    {
-        var winRates = new Dictionary<int, double>();
-
-        foreach (var oddsGroup in data.GroupBy(d => d.CurrentOdds).OrderBy(g => g.Key))
-        {
-            var odds = oddsGroup.Key;
-            var observedWinRate = oddsGroup.Average(d => d.IsWinner ? 1.0 : 0.0);
-
-            if (odds == 13)
-            {
-                // For 13:1, we know true odds are 13:1 to 25:1+
-                // Observed win rate is contaminated (too high)
-                // Use theoretical calculation instead
-
-                // Estimate average true odds (conservative: assume average is 16:1)
-                var estimatedAverageTrueOdds = 16;
-                var theoreticalWinRate = 1.0 / (estimatedAverageTrueOdds + 1.0);
-
-                // Blend observed with theoretical (weight theoretical more heavily)
-                var adjustedWinRate = theoreticalWinRate * 0.7 + observedWinRate * 0.3;
-
-                Console.WriteLine(
-                    $"   13:1 Adjusted: Observed={observedWinRate:P2}, Theoretical={theoreticalWinRate:P2}, Adjusted={adjustedWinRate:P2}");
-                winRates[odds] = adjustedWinRate;
-            }
-            else
-            {
-                winRates[odds] = observedWinRate;
-            }
-        }
-
-        return winRates;
-    }
-
-    /// <summary>
-    ///     Splits 13:1 clamped odds into multiple buckets based on pirate quality
-    /// </summary>
     private List<CausalDataPoint> SplitClamped13IntoSubBuckets(List<CausalDataPoint> data)
     {
         var result = new List<CausalDataPoint>();
 
-        // Find all 13:1 pirates
         var clamped13 = data.Where(d => d.CurrentOdds == 13).ToList();
 
         if (!clamped13.Any())
             return data;
 
-        // Calculate percentile thresholds based on quality score
         var qualityScores = clamped13.Select(d => new
         {
             DataPoint = d,
@@ -1155,7 +666,6 @@ public class CausalInferenceService : ICausalInferenceService
                       (4 - d.Position) / 4.0 * 0.3
         }).OrderByDescending(x => x.Quality).ToList();
 
-        // Split into quartiles
         var count = qualityScores.Count;
         var q1 = count / 4;
         var q2 = count / 2;
@@ -1166,13 +676,9 @@ public class CausalInferenceService : ICausalInferenceService
             var item = qualityScores[i];
             int estimatedOdds;
 
-            // Top quartile: probably true 13:1
             if (i < q1) estimatedOdds = 13;
-            // Second quartile: probably 14-15:1
             else if (i < q2) estimatedOdds = 15;
-            // Third quartile: probably 17-19:1
             else if (i < q3) estimatedOdds = 18;
-            // Bottom quartile: probably 20-25+:1
             else estimatedOdds = 23;
 
             result.Add(new CausalDataPoint
@@ -1189,16 +695,28 @@ public class CausalInferenceService : ICausalInferenceService
             });
         }
 
-        // Add non-13:1 data unchanged
         result.AddRange(data.Where(d => d.CurrentOdds != 13));
 
-        Console.WriteLine($"   Split {clamped13.Count} clamped 13:1 odds into sub-buckets:");
-        Console.WriteLine($"      13:1 (top 25%): {count - q3} pirates");
-        Console.WriteLine($"      15:1 (Q2):      {q2 - q1} pirates");
-        Console.WriteLine($"      18:1 (Q3):      {q3 - q2} pirates");
-        Console.WriteLine($"      23:1 (bottom):  {q1} pirates");
+        Console.WriteLine($"   Split {clamped13.Count} clamped 13:1 odds into estimated true odds (13-23:1)");
 
         return result;
+    }
+
+    private Dictionary<int, double> CalculateOddsDoseResponse(List<CausalDataPoint> data)
+    {
+        var doseResponse = new Dictionary<int, double>();
+        var oddsLevels = new[] { 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12 };
+
+        foreach (var oddsLevel in oddsLevels)
+        {
+            var atOdds = data.Where(d => d.CurrentOdds == oddsLevel).ToList();
+            if (atOdds.Count < 10) continue;
+
+            var winRate = atOdds.Average(d => d.IsWinner ? 1.0 : 0.0);
+            doseResponse[oddsLevel] = winRate;
+        }
+
+        return doseResponse;
     }
 
     private async Task<Dictionary<string, InteractionEffect>> AnalyzeInteractionEffectsAsync(List<CausalDataPoint> data)
@@ -1217,12 +735,12 @@ public class CausalInferenceService : ICausalInferenceService
             d => d.CurrentOdds <= 2,
             "Positive Food × Favorite Status");
 
-        // 3. High Strength × Weak Rivals
+        // 3. High Strength × Position
         var medianStrength = data.Select(d => d.Strength).OrderBy(s => s).ElementAt(data.Count / 2);
-        interactions["Strength_x_Rivals"] = AnalyzeInteraction(data,
+        interactions["Strength_x_Position"] = AnalyzeInteraction(data,
             d => d.Strength >= medianStrength,
-            d => true, // Would need rival data
-            "High Strength × Weak Rivals");
+            d => d.Position <= 1,
+            "High Strength × Front Position");
 
         return interactions;
     }
@@ -1233,22 +751,18 @@ public class CausalInferenceService : ICausalInferenceService
         Func<CausalDataPoint, bool> treatment2,
         string name)
     {
-        // Four groups: Both, T1 only, T2 only, Neither
         var bothGroup = data.Where(d => treatment1(d) && treatment2(d)).ToList();
         var t1OnlyGroup = data.Where(d => treatment1(d) && !treatment2(d)).ToList();
         var t2OnlyGroup = data.Where(d => !treatment1(d) && treatment2(d)).ToList();
         var neitherGroup = data.Where(d => !treatment1(d) && !treatment2(d)).ToList();
 
-        // Calculate averages with safety checks for empty sequences
         var both = bothGroup.Any() ? bothGroup.Average(d => d.IsWinner ? 1.0 : 0.0) : 0.0;
         var t1Only = t1OnlyGroup.Any() ? t1OnlyGroup.Average(d => d.IsWinner ? 1.0 : 0.0) : 0.0;
         var t2Only = t2OnlyGroup.Any() ? t2OnlyGroup.Average(d => d.IsWinner ? 1.0 : 0.0) : 0.0;
         var neither = neitherGroup.Any() ? neitherGroup.Average(d => d.IsWinner ? 1.0 : 0.0) : 0.0;
 
-        // Interaction effect: (Both - T1) - (T2 - Neither)
         var interactionEffect = both - t1Only - (t2Only - neither);
 
-        // Log warning if any group is empty or very small
         if (bothGroup.Count < 10 || t1OnlyGroup.Count < 10 || t2OnlyGroup.Count < 10 || neitherGroup.Count < 10)
         {
             Console.WriteLine($"   ⚠️ Warning: {name} has small sample sizes:");
@@ -1264,14 +778,52 @@ public class CausalInferenceService : ICausalInferenceService
             Treatment1Only = t1Only,
             Treatment2Only = t2Only,
             Neither = neither,
-            IsSynergistic =
-                interactionEffect > 0.02 && bothGroup.Count >= 10, // Positive interaction (with sufficient data)
-            IsAntagonistic =
-                interactionEffect < -0.02 && bothGroup.Count >= 10 // Negative interaction (with sufficient data)
+            IsSynergistic = interactionEffect > 0.02 && bothGroup.Count >= 10,
+            IsAntagonistic = interactionEffect < -0.02 && bothGroup.Count >= 10
         };
     }
 
-    // Helper methods
+    private List<MatchedPair> MatchOptimized(
+        List<CausalMatchCandidate> treatment, 
+        List<CausalMatchCandidate> control, 
+        double maxDistance)
+    {
+        var matches = new List<MatchedPair>();
+        
+        // PERFORMANCE: Cap search pool to maintain O(N) execution time for massive datasets
+        // 2000 is a standard statistical sample size for stable matching
+        var pool = control.Count > 2000 
+            ? control.OrderBy(_ => Random.Shared.Next()).Take(2000).ToList() 
+            : control;
+
+        foreach (var t in treatment)
+        {
+            var bestDist = double.MaxValue;
+            CausalMatchCandidate? bestMatch = null;
+
+            foreach (var c in pool)
+            {
+                var dist = MathUtilities.EuclideanDistance(t.Covariates, c.Covariates);
+                if (dist < bestDist && dist < maxDistance)
+                {
+                    bestDist = dist;
+                    bestMatch = c;
+                }
+            }
+
+            if (bestMatch.HasValue)
+            {
+                matches.Add(new MatchedPair {
+                    TreatedOutcome = t.Data.IsWinner ? 1.0 : 0.0,
+                    ControlOutcome = bestMatch.Value.Data.IsWinner ? 1.0 : 0.0,
+                    Distance = bestDist
+                });
+            }
+        }
+        return matches;
+    }
+
+    
     private List<MatchedPair> MatchOnCovariates(
         List<CausalDataPoint> treatment,
         List<CausalDataPoint> control,
@@ -1280,15 +832,45 @@ public class CausalInferenceService : ICausalInferenceService
     {
         var matches = new List<MatchedPair>();
 
+        // ✅ OPTIMIZATION: Adaptive sampling based on control size
+        // If control is massive, sample intelligently for 100x speedup
+        List<CausalDataPoint> controlSample;
+        var sampleSize = 3000; // Statistically sufficient for matching
+
+        if (control.Count > sampleSize * 2)
+        {
+            // Stratified sampling: ensure we get representation across strength/odds
+            var controlByStrength = control
+                .OrderBy(c => c.Strength)
+                .Select((c, idx) => new { Data = c, Stratum = idx / (control.Count / 10) })
+                .GroupBy(x => x.Stratum)
+                .SelectMany(g => g.OrderBy(_ => Guid.NewGuid()).Take(sampleSize / 10))
+                .Select(x => x.Data)
+                .ToList();
+
+            controlSample = controlByStrength;
+            Console.WriteLine(
+                $"      Matching optimization: sampled {controlSample.Count} from {control.Count} controls (stratified)");
+        }
+        else
+        {
+            controlSample = control;
+        }
+
+        // ✅ OPTIMIZATION: Pre-compute all control covariates (avoid recomputing in loop)
+        var controlCovariates = controlSample
+            .Select(c => new { Control = c, Covariates = getCovariates(c) })
+            .ToList();
+
         foreach (var treated in treatment)
         {
             var treatedCovariates = getCovariates(treated);
 
-            var bestMatch = control
-                .Select(c => new
+            var bestMatch = controlCovariates
+                .Select(cc => new
                 {
-                    Control = c,
-                    Distance = MathUtilities.EuclideanDistance(treatedCovariates, getCovariates(c))
+                    cc.Control,
+                    Distance = MathUtilities.EuclideanDistance(treatedCovariates, cc.Covariates)
                 })
                 .Where(x => x.Distance < maxDistance)
                 .OrderBy(x => x.Distance)
@@ -1305,15 +887,6 @@ public class CausalInferenceService : ICausalInferenceService
         }
 
         return matches;
-    }
-
-    private List<MatchedPair> MatchOnCovariatesWithRivals(
-        List<CausalDataPoint> treatment,
-        List<CausalDataPoint> control,
-        Func<CausalDataPoint, double[]> getCovariates,
-        double maxDistance = 0.2)
-    {
-        return MatchOnCovariates(treatment, control, getCovariates, maxDistance);
     }
 
     private void DisplayEffect(CausalEffectReport effect)
@@ -1365,4 +938,171 @@ public class CausalInferenceService : ICausalInferenceService
             Console.WriteLine($"         Neither: {interaction.Neither:P2}");
         }
     }
+
+    private void GenerateKeyFindings(ComprehensiveCausalReport report)
+    {
+        report.KeyFindings.Clear();
+        report.Recommendations.Clear();
+
+        // Food adjustment findings
+        if (report.FoodAdjustmentEffect.IsSignificant)
+        {
+            report.KeyFindings.Add(
+                $"Food adjustment has {report.FoodAdjustmentEffect.AverageTreatmentEffect:+0.0%;-0.0%} causal effect");
+            if (Math.Abs(report.FoodAdjustmentEffect.AverageTreatmentEffect) > 0.05)
+                report.Recommendations.Add("Strongly prioritize food adjustments in betting strategy");
+        }
+
+        // Seat position findings
+        if (report.OverallSeatPositionJointTest?.IsSignificant == true)
+        {
+            report.KeyFindings.Add("Seat position has significant causal impact");
+
+            if (report.EachSeatVsOthersEffects.Any())
+            {
+                var bestPos = report.EachSeatVsOthersEffects.OrderByDescending(kv => kv.Value.AverageTreatmentEffect)
+                    .First();
+                var worstPos = report.EachSeatVsOthersEffects.OrderBy(kv => kv.Value.AverageTreatmentEffect).First();
+
+                report.KeyFindings.Add(
+                    $"Position {bestPos.Key} shows strongest advantage ({bestPos.Value.AverageTreatmentEffect:+0.0%;-0.0%})");
+                report.Recommendations.Add($"Weight Position {bestPos.Key} heavily in predictions");
+            }
+        }
+        else
+        {
+            report.KeyFindings.Add("Seat position shows no significant causal effect");
+        }
+
+        // Arena findings
+        if (report.OverallArenaJointTest?.IsSignificant == true)
+        {
+            report.KeyFindings.Add("Arena placement has significant causal impact");
+
+            var significantArenas = report.IndividualArenaEffects
+                .Where(kv => kv.Value.IsSignificant)
+                .OrderByDescending(kv => Math.Abs(kv.Value.AverageTreatmentEffect))
+                .ToList();
+
+            if (significantArenas.Any())
+            {
+                var best = significantArenas.First();
+                report.Recommendations.Add(
+                    $"Consider arena-specific adjustments (Arena {best.Key} shows {best.Value.AverageTreatmentEffect:+0.0%;-0.0%} effect)");
+            }
+        }
+        else
+        {
+            report.KeyFindings.Add("Arena placement shows no significant causal effect");
+        }
+
+        // Rival strength
+        if (report.RivalStrengthEffect.IsSignificant &&
+            Math.Abs(report.RivalStrengthEffect.AverageTreatmentEffect) > 0.03)
+        {
+            report.KeyFindings.Add(
+                $"Strong rivals {(report.RivalStrengthEffect.AverageTreatmentEffect < 0 ? "reduce" : "increase")} win probability by {Math.Abs(report.RivalStrengthEffect.AverageTreatmentEffect):0.0%}");
+            report.Recommendations.Add("Include detailed rival analysis in predictions");
+        }
+
+        // Odds diagnostic
+        if (report.OddsDiagnostic?.IsPatternInverted == true)
+        {
+            report.KeyFindings.Add("⚠️ WARNING: Odds pattern appears inverted in data");
+            report.Recommendations.Add("URGENT: Investigate odds data quality");
+        }
+
+        // Interactions
+        var strongSynergies = report.InteractionEffects
+            .Where(kv => kv.Value.IsSynergistic && Math.Abs(kv.Value.InteractionStrength) > 0.03)
+            .ToList();
+
+        if (strongSynergies.Any())
+        {
+            report.KeyFindings.Add($"Found {strongSynergies.Count} strong synergistic combinations");
+            foreach (var (key, effect) in strongSynergies)
+                report.Recommendations.Add($"Prioritize {effect.Name} combinations");
+        }
+
+        Console.WriteLine("\n📋 KEY FINDINGS:");
+        foreach (var finding in report.KeyFindings) Console.WriteLine($"   • {finding}");
+
+        Console.WriteLine("\n💡 RECOMMENDATIONS:");
+        foreach (var rec in report.Recommendations) Console.WriteLine($"   → {rec}");
+    }
+
+    private void SaveCausalReport(ComprehensiveCausalReport report)
+    {
+        Directory.CreateDirectory("Reports");
+        var fileName = Path.Combine("Reports", $"causal_analysis_{DateTime.UtcNow:yyyyMMdd_HHmmss}.json");
+
+        var json = JsonSerializer.Serialize(report, new JsonSerializerOptions { WriteIndented = true });
+        File.WriteAllText(fileName, json);
+
+        Console.WriteLine($"\n📄 Comprehensive causal analysis report saved to {fileName}");
+    }
+
+    public async Task<OddsDiagnosticReport> DiagnoseOddsPatternAsync(List<CausalDataPoint>? data = null)
+    {
+        data ??= await LoadCausalDataAsync();
+
+        Console.WriteLine("\n═══════════════════════════════════════════════════");
+        Console.WriteLine("🔍 ODDS PATTERN DIAGNOSTIC");
+        Console.WriteLine("═══════════════════════════════════════════════════\n");
+
+        Console.WriteLine("ℹ️  Note: 1:1 odds excluded (no-bet placeholders)");
+        Console.WriteLine("ℹ️  Note: 13:1 odds redistributed to estimated true odds\n");
+
+        var oddsBuckets = data.GroupBy(d => d.CurrentOdds)
+            .OrderBy(g => g.Key)
+            .Select(g => new OddsBucket
+            {
+                Odds = g.Key,
+                Count = g.Count(),
+                Wins = g.Count(d => d.IsWinner),
+                WinRate = g.Average(d => d.IsWinner ? 1.0 : 0.0),
+                ImpliedProbability = 1.0 / (g.Key + 1.0),
+                AvgStrength = g.Average(d => d.Strength),
+                AvgFoodAdjustment = g.Average(d => d.FoodAdjustment),
+                AvgPosition = g.Average(d => d.Position)
+            })
+            .ToList();
+
+        Console.WriteLine("Odds Analysis:");
+        Console.WriteLine("────────────────────────────────────────────────────────────────────");
+        Console.WriteLine($"{"Odds",-8} {"Count",-8} {"Wins",-8} {"Win%",-10} {"Expected%",-12} {"Diff",-10}");
+        Console.WriteLine("────────────────────────────────────────────────────────────────────");
+
+        foreach (var bucket in oddsBuckets)
+        {
+            var diff = bucket.WinRate - bucket.ImpliedProbability;
+            var warning = bucket.Odds >= 13 && bucket.Odds <= 25 ? " (redistributed)" : "";
+
+            Console.WriteLine($"{bucket.Odds}:1      {bucket.Count,-8} {bucket.Wins,-8} " +
+                              $"{bucket.WinRate,-10:P2} {bucket.ImpliedProbability,-12:P2} " +
+                              $"{diff,-10:+0.0%;-0.0%}{warning}");
+        }
+
+        var oddsValues = data.Select(d => (double)d.CurrentOdds).ToList();
+        var outcomes = data.Select(d => d.IsWinner ? 1.0 : 0.0).ToList();
+        var correlation = MathUtilities.CalculateCorrelation(oddsValues, outcomes);
+
+        Console.WriteLine($"\n📊 Correlation: {correlation:F4}");
+        Console.WriteLine(correlation > 0
+            ? "   ⚠️  Positive = HIGHER odds = MORE wins (INVERTED!)"
+            : "   ✅ Negative = higher odds = fewer wins (expected)");
+
+        return new OddsDiagnosticReport
+        {
+            OddsBuckets = oddsBuckets,
+            CorrelationWithWinning = correlation,
+            IsPatternInverted = correlation > 0,
+            TotalObservations = data.Count
+        };
+    }
+
+    #endregion
+    
+    private record struct CausalMatchCandidate(CausalDataPoint Data, double[] Covariates);
+
 }
