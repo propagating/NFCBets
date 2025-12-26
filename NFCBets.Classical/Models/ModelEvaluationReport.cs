@@ -1,4 +1,4 @@
-namespace NFCBets.Services.Models;
+namespace NFCBets.Classical.Models;
 
 public class ModelEvaluationReport
 {

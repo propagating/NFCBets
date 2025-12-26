@@ -4,5 +4,5 @@ namespace NFCBets.Evaluation.Interfaces;
 
 public interface IBettingStrategyComparisonService
 {
-    Task<StrategyComparisonReport> CompareOptimizationMethodsAsync(int startRound, int endRound);
+    Task<StrategyComparisonReport> CompareOptimizationMethodsAsync(int startRound, int endRound, bool includeNaiveBaseline = true);
 }

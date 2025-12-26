@@ -70,11 +70,11 @@ public class CausalInferenceService : ICausalInferenceService
             Console.WriteLine("      → Skipping individual position analysis");
         }
 
-        // ========== ARENA - SIMPLIFIED TO 2 TESTS ==========
+        // ========== ARENA - 2 TESTS ==========
         Console.WriteLine("\n3️⃣ ARENA PLACEMENT ANALYSIS (2 Tests)");
         Console.WriteLine("═══════════════════════════════════════════════════");
 
-        // Test 1: Does arena matter at all? (Joint test)
+// Test 1: Joint test for arena
         Console.WriteLine("\n   Test 1: Overall Arena Effect (Joint Test)...");
         report.OverallArenaJointTest = await TestOverallArenaEffectAsync(allData);
         Console.WriteLine($"      p-value: {report.OverallArenaJointTest.PValue:F4} " +
@@ -83,33 +83,32 @@ public class CausalInferenceService : ICausalInferenceService
         if (report.OverallArenaJointTest.IsSignificant)
         {
             Console.WriteLine("      → Arena placement DOES matter - analyzing individual arenas...\n");
-
-            // Test 2: Which arenas are best/worst?
+    
+            // Test 2: Individual arena effects
             Console.WriteLine("   Test 2: Individual Arena Effects...");
             report.IndividualArenaEffects = await EstimateIndividualArenaEffectsAsync(allData);
-
+    
+            // ✅ Display individual effects with full details
             foreach (var (arenaId, effect) in report.IndividualArenaEffects.OrderBy(kv => kv.Key))
             {
-                var significance = effect.IsSignificant ? "✅" : "⚠️";
-                Console.WriteLine(
-                    $"      Arena {arenaId}: {effect.AverageTreatmentEffect:+0.0%;-0.0%} {significance} ({effect.MatchedPairs} matched pairs)");
+                Console.WriteLine($"\n      Arena {arenaId}:");
+                DisplayEffect(effect);
             }
-
+    
             // Identify best arena
             var significantArenas = report.IndividualArenaEffects
                 .Where(kv => kv.Value.IsSignificant)
                 .OrderByDescending(kv => kv.Value.AverageTreatmentEffect)
                 .ToList();
-
+    
             if (significantArenas.Any())
             {
                 var bestArena = significantArenas.First();
-                Console.WriteLine(
-                    $"\n      🏆 Best arena: {bestArena.Key} ({bestArena.Value.AverageTreatmentEffect:+0.0%;-0.0%})");
+                Console.WriteLine($"\n      🏆 Best arena: {bestArena.Key} ({bestArena.Value.AverageTreatmentEffect:+0.0%;-0.0%})");
             }
             else
             {
-                Console.WriteLine("\n      ⚠️ No individual arenas show significant effects");
+                Console.WriteLine($"\n      ⚠️ No individual arenas show significant effects (limited same-pirate data)");
             }
         }
         else
@@ -365,7 +364,7 @@ public class CausalInferenceService : ICausalInferenceService
         var seatEffects = new Dictionary<int, CausalEffectReport>();
         
         var candidates = data.Select(d => new CausalMatchCandidate(
-            d, 
+            d,
             new[] { d.Strength / 100.0, d.FoodAdjustment / 3.0, 1.0 / Math.Max(2, d.CurrentOdds) }
         )).ToList();
         
@@ -412,163 +411,240 @@ public class CausalInferenceService : ICausalInferenceService
 
     #region Arena Analysis (2 Tests)
 
-    public async Task<CausalEffectReport> TestOverallArenaEffectAsync(List<CausalDataPoint>? data = null)
+ // ========== ARENA - 2 TESTS ==========
+
+// Test 1: Joint test - Do arenas differentially affect pirate performance?
+public async Task<CausalEffectReport> TestOverallArenaEffectAsync(List<CausalDataPoint>? data = null)
+{
+    data ??= await LoadCausalDataAsync();
+    
+    Console.WriteLine("   Testing if arena placement affects pirate-specific win rates...");
+    
+    // Find pirates who appear in multiple arenas (required for within-pirate comparison)
+    var pirateArenas = new Dictionary<int, HashSet<int>>();
+    foreach (var point in data)
     {
-        data ??= await LoadCausalDataAsync();
-
-        Console.WriteLine("   Performing permutation test for overall arena effect...");
-
-        // Calculate actual variance between arenas
-        var arenaWinRates = data.GroupBy(d => d.ArenaId)
+        if (!pirateArenas.ContainsKey(point.PirateId))
+            pirateArenas[point.PirateId] = new HashSet<int>();
+        pirateArenas[point.PirateId].Add(point.ArenaId);
+    }
+    
+    var piratesInMultipleArenas = pirateArenas
+        .Where(kv => kv.Value.Count > 1)
+        .Select(kv => kv.Key)
+        .ToList();
+    
+    Console.WriteLine($"      Found {piratesInMultipleArenas.Count} pirates appearing in multiple arenas");
+    
+    if (piratesInMultipleArenas.Count < 10)
+    {
+        Console.WriteLine("      ⚠️ Insufficient pirates in multiple arenas for joint test");
+        return new CausalEffectReport
+        {
+            TreatmentName = "Overall Arena Assignment Effect (Joint Test)",
+            AverageTreatmentEffect = 0,
+            PValue = 1.0,
+            IsSignificant = false,
+            TreatmentGroupSize = 0,
+            ControlGroupSize = 0,
+            MatchedPairs = 0
+        };
+    }
+    
+    // For each pirate in multiple arenas, calculate variance in their win rates across arenas
+    var pirateVariances = new List<double>();
+    
+    foreach (var pirateId in piratesInMultipleArenas)
+    {
+        var pirateData = data.Where(d => d.PirateId == pirateId).ToList();
+        var pirateWinRatesByArena = pirateData
+            .GroupBy(d => d.ArenaId)
             .Select(g => g.Average(d => d.IsWinner ? 1.0 : 0.0))
             .ToList();
-
-        var actualVariance = MathUtilities.CalculateVariance(arenaWinRates);
-
-        // ✅ FIX: Use primitive arrays to reduce GC pressure
-        var arenaIds = data.Select(d => d.ArenaId).ToArray();
-        var outcomes = data.Select(d => d.IsWinner ? 1.0 : 0.0).ToArray();
-        var random = new Random(42);
-
-        var permutationVariances = new double[1000];
-
-        for (var i = 0; i < 1000; i++)
+        
+        // Only calculate variance if pirate appeared in 2+ arenas with multiple observations
+        if (pirateWinRatesByArena.Count >= 2)
         {
-            // Fisher-Yates shuffle
-            var shuffledArenas = (int[])arenaIds.Clone();
-            for (var j = shuffledArenas.Length - 1; j > 0; j--)
-            {
-                var k = random.Next(j + 1);
-                (shuffledArenas[j], shuffledArenas[k]) = (shuffledArenas[k], shuffledArenas[j]);
-            }
-
-            // ✅ Calculate variance using arrays
-            var arenaGroups = new Dictionary<int, List<double>>();
-            for (var j = 0; j < shuffledArenas.Length; j++)
-            {
-                var arena = shuffledArenas[j];
-                if (!arenaGroups.ContainsKey(arena))
-                    arenaGroups[arena] = new List<double>();
-                arenaGroups[arena].Add(outcomes[j]);
-            }
-
-            var shuffledWinRates = arenaGroups.Values.Select(list => list.Average()).ToArray();
-            permutationVariances[i] = MathUtilities.CalculateVariance(shuffledWinRates);
+            var variance = MathUtilities.CalculateVariance(pirateWinRatesByArena);
+            pirateVariances.Add(variance);
         }
-
-        var countGreaterOrEqual = 0;
-        for (var i = 0; i < permutationVariances.Length; i++)
-            if (permutationVariances[i] >= actualVariance)
+    }
+    
+    if (!pirateVariances.Any())
+    {
+        Console.WriteLine("      ⚠️ No pirates with sufficient arena comparisons");
+        return new CausalEffectReport
+        {
+            TreatmentName = "Overall Arena Assignment Effect (Joint Test)",
+            AverageTreatmentEffect = 0,
+            PValue = 1.0,
+            IsSignificant = false
+        };
+    }
+    
+    // Average variance across all pirates (actual effect)
+    var actualAvgVariance = pirateVariances.Average();
+    
+    Console.WriteLine($"      Average within-pirate variance across arenas: {actualAvgVariance:F6}");
+    
+    // Permutation test: shuffle arena assignments within each pirate
+    int countGreaterOrEqual = 0;
+    var random = new Random(42);
+    
+    for (int perm = 0; perm < 1000; perm++)
+    {
+        var permutedVariances = new List<double>();
+        
+        foreach (var pirateId in piratesInMultipleArenas)
+        {
+            var pirateData = data.Where(d => d.PirateId == pirateId).ToList();
+            if (pirateData.Count < 2) continue;
+            
+            // Shuffle arenas within this pirate's data
+            var arenas = pirateData.Select(d => d.ArenaId).ToArray();
+            for (int j = arenas.Length - 1; j > 0; j--)
+            {
+                int k = random.Next(j + 1);
+                (arenas[j], arenas[k]) = (arenas[k], arenas[j]);
+            }
+            
+            // Calculate permuted variance
+            var permutedByArena = new Dictionary<int, List<double>>();
+            for (int j = 0; j < arenas.Length; j++)
+            {
+                var arena = arenas[j];
+                if (!permutedByArena.ContainsKey(arena))
+                    permutedByArena[arena] = new List<double>();
+                permutedByArena[arena].Add(pirateData[j].IsWinner ? 1.0 : 0.0);
+            }
+            
+            if (permutedByArena.Count >= 2)
+            {
+                var permutedWinRates = permutedByArena.Values.Select(list => list.Average()).ToList();
+                permutedVariances.Add(MathUtilities.CalculateVariance(permutedWinRates));
+            }
+        }
+        
+        if (permutedVariances.Any())
+        {
+            var permutedAvgVariance = permutedVariances.Average();
+            if (permutedAvgVariance >= actualAvgVariance)
                 countGreaterOrEqual++;
-        var pValue = countGreaterOrEqual / 1000.0;
-
-        var avgEffect = Math.Sqrt(actualVariance);
-        var standardError = Math.Sqrt(MathUtilities.CalculateVariance(permutationVariances));
-
-        return new CausalEffectReport
-        {
-            TreatmentName = "Overall Arena Assignment Effect (Joint Permutation Test)",
-            AverageTreatmentEffect = avgEffect,
-            StandardError = standardError,
-            TStatistic = avgEffect / standardError,
-            PValue = pValue,
-            TreatmentGroupSize = data.Count,
-            ControlGroupSize = data.Count,
-            MatchedPairs = 1000,
-            IsSignificant = pValue < 0.05,
-            ConfidenceInterval = (0, avgEffect + 1.96 * standardError)
-        };
-    }
-
-    public async Task<Dictionary<int, CausalEffectReport>> EstimateIndividualArenaEffectsAsync(
-        List<CausalDataPoint>? data = null)
-    {
-        data ??= await LoadCausalDataAsync();
-
-        Console.WriteLine("   Analyzing each arena individually...");
-
-        var arenaEffects = new Dictionary<int, CausalEffectReport>();
-
-        for (var arenaId = 1; arenaId <= 5; arenaId++)
-            arenaEffects[arenaId] = await EstimateArenaEffectAsync(data, arenaId);
-
-        return arenaEffects;
-    }
-
-    private async Task<CausalEffectReport> EstimateArenaEffectAsync(List<CausalDataPoint> data, int targetArenaId)
-    {
-        // Step 1: Identify pirates appearing in multiple arenas (single pass)
-        var pirateArenas = new Dictionary<int, HashSet<int>>();
-        foreach (var point in data)
-        {
-            if (!pirateArenas.ContainsKey(point.PirateId))
-                pirateArenas[point.PirateId] = new HashSet<int>();
-            pirateArenas[point.PirateId].Add(point.ArenaId);
         }
-
-        var piratesInMultipleArenas = pirateArenas
-            .Where(kv => kv.Value.Count > 1)
-            .Select(kv => kv.Key)
-            .ToHashSet();
-
-        Console.WriteLine(
-            $"      Arena {targetArenaId}: Found {piratesInMultipleArenas.Count} pirates in multiple arenas");
-
-        // Step 2: Build indexed lookups for O(1) access
-        var targetArenaData = data
-            .Where(d => d.ArenaId == targetArenaId && piratesInMultipleArenas.Contains(d.PirateId))
-            .ToList();
-
-        // ✅ Index other arenas by pirate for O(1) lookup (not O(N) nested loop)
-        var otherArenasLookup = data
-            .Where(d => d.ArenaId != targetArenaId && piratesInMultipleArenas.Contains(d.PirateId))
-            .GroupBy(d => d.PirateId)
-            .ToDictionary(g => g.Key, g => g.ToList());
-
-        // Step 3: Match using dictionary lookup (was O(N*M), now O(N))
-        var matches = new List<MatchedPair>();
-
-        foreach (var target in targetArenaData)
-        {
-            if (!otherArenasLookup.TryGetValue(target.PirateId, out var candidateMatches))
-                continue;
-
-            // Find best match for this pirate from other arenas
-            var samePirateOtherArena = candidateMatches
-                .Where(d => Math.Abs(d.FoodAdjustment - target.FoodAdjustment) <= 1 &&
-                            Math.Abs(d.Position - target.Position) <= 1)
-                .OrderBy(d => Math.Abs(d.CurrentOdds - target.CurrentOdds))
-                .FirstOrDefault();
-
-            if (samePirateOtherArena != null)
-                matches.Add(new MatchedPair
-                {
-                    TreatedOutcome = target.IsWinner ? 1.0 : 0.0,
-                    ControlOutcome = samePirateOtherArena.IsWinner ? 1.0 : 0.0,
-                    PropensityScore = 0.5
-                });
-        }
-
-        var ate = matches.Any() ? matches.Select(m => m.TreatedOutcome - m.ControlOutcome).Average() : 0;
-        var standardError = matches.Any()
-            ? MathUtilities.CalculateStandardError(matches.Select(m => m.TreatedOutcome - m.ControlOutcome))
-            : 0;
-        var tStat = standardError > 0 ? ate / standardError : 0;
-
-        return new CausalEffectReport
-        {
-            TreatmentName = $"Arena {targetArenaId} Placement",
-            AverageTreatmentEffect = ate,
-            StandardError = standardError,
-            TStatistic = tStat,
-            PValue = MathUtilities.CalculatePValueFromT(tStat, matches.Count),
-            TreatmentGroupSize = targetArenaData.Count,
-            ControlGroupSize = otherArenasLookup.Values.Sum(list => list.Count),
-            MatchedPairs = matches.Count,
-            IsSignificant = Math.Abs(tStat) > 1.96 && matches.Count > 30,
-            ConfidenceInterval = (ate - 1.96 * standardError, ate + 1.96 * standardError)
-        };
     }
+    
+    var pValue = countGreaterOrEqual / 1000.0;
+    
+    Console.WriteLine($"      Permutations with variance ≥ actual: {countGreaterOrEqual}/1000");
+    Console.WriteLine($"      p-value: {pValue:F4}");
+    
+    var avgEffect = Math.Sqrt(actualAvgVariance);
+    var standardError = Math.Sqrt(actualAvgVariance / piratesInMultipleArenas.Count);
+    
+    return new CausalEffectReport
+    {
+        TreatmentName = "Overall Arena Assignment Effect (Within-Pirate Variance Test)",
+        AverageTreatmentEffect = avgEffect,
+        StandardError = standardError,
+        TStatistic = avgEffect / standardError,
+        PValue = pValue,
+        TreatmentGroupSize = piratesInMultipleArenas.Count,
+        ControlGroupSize = piratesInMultipleArenas.Count,
+        MatchedPairs = 1000,
+        IsSignificant = pValue < 0.05,
+        ConfidenceInterval = (0, avgEffect + 1.96 * standardError)
+    };
+}
+
+// Test 2: Individual arena effects (same-pirate comparison)
+public async Task<Dictionary<int, CausalEffectReport>> EstimateIndividualArenaEffectsAsync(List<CausalDataPoint>? data = null)
+{
+    data ??= await LoadCausalDataAsync();
+    
+    Console.WriteLine("   Analyzing individual arena effects (same-pirate comparisons)...");
+    
+    var arenaEffects = new Dictionary<int, CausalEffectReport>();
+    
+    for (var arenaId = 1; arenaId <= 5; arenaId++)
+    {
+        var effect = await EstimateArenaEffectAsync(data, arenaId);
+        arenaEffects[arenaId] = effect;
+        
+        Console.WriteLine($"      Arena {arenaId}: {effect.AverageTreatmentEffect:+0.0%;-0.0%} " +
+                         $"({effect.MatchedPairs} matched pairs) " +
+                         $"{(effect.IsSignificant ? "✅" : "⚠️")}");
+    }
+    
+    return arenaEffects;
+}
+
+private async Task<CausalEffectReport> EstimateArenaEffectAsync(List<CausalDataPoint> data, int targetArenaId)
+{
+    // Build lookup dictionaries upfront for O(1) access
+    var pirateArenas = new Dictionary<int, HashSet<int>>();
+    foreach (var point in data)
+    {
+        if (!pirateArenas.ContainsKey(point.PirateId))
+            pirateArenas[point.PirateId] = new HashSet<int>();
+        pirateArenas[point.PirateId].Add(point.ArenaId);
+    }
+    
+    var piratesInMultipleArenas = pirateArenas
+        .Where(kv => kv.Value.Count > 1)
+        .Select(kv => kv.Key)
+        .ToHashSet();
+
+    var targetArenaData = data
+        .Where(d => d.ArenaId == targetArenaId && piratesInMultipleArenas.Contains(d.PirateId))
+        .ToList();
+    
+    var otherArenasLookup = data
+        .Where(d => d.ArenaId != targetArenaId && piratesInMultipleArenas.Contains(d.PirateId))
+        .GroupBy(d => d.PirateId)
+        .ToDictionary(g => g.Key, g => g.ToList());
+
+    var matches = new List<MatchedPair>();
+
+    foreach (var target in targetArenaData)
+    {
+        if (!otherArenasLookup.TryGetValue(target.PirateId, out var candidateMatches))
+            continue;
+
+        var samePirateOtherArena = candidateMatches
+            .Where(d => Math.Abs(d.FoodAdjustment - target.FoodAdjustment) <= 1 &&
+                        Math.Abs(d.Position - target.Position) <= 1)
+            .OrderBy(d => Math.Abs(d.CurrentOdds - target.CurrentOdds))
+            .FirstOrDefault();
+
+        if (samePirateOtherArena != null)
+            matches.Add(new MatchedPair
+            {
+                TreatedOutcome = target.IsWinner ? 1.0 : 0.0,
+                ControlOutcome = samePirateOtherArena.IsWinner ? 1.0 : 0.0,
+                PropensityScore = 0.5
+            });
+    }
+
+    var ate = matches.Any() ? matches.Select(m => m.TreatedOutcome - m.ControlOutcome).Average() : 0;
+    var standardError = matches.Any()
+        ? MathUtilities.CalculateStandardError(matches.Select(m => m.TreatedOutcome - m.ControlOutcome))
+        : 0;
+    var tStat = standardError > 0 ? ate / standardError : 0;
+
+    return new CausalEffectReport
+    {
+        TreatmentName = $"Arena {targetArenaId} Placement",
+        AverageTreatmentEffect = ate,
+        StandardError = standardError,
+        TStatistic = tStat,
+        PValue = MathUtilities.CalculatePValueFromT(tStat, matches.Count),
+        TreatmentGroupSize = targetArenaData.Count,
+        ControlGroupSize = otherArenasLookup.Values.Sum(list => list.Count),
+        MatchedPairs = matches.Count,
+        IsSignificant = Math.Abs(tStat) > 1.96 && matches.Count > 30,
+        ConfidenceInterval = (ate - 1.96 * standardError, ate + 1.96 * standardError)
+    };
+}
 
     #endregion
 

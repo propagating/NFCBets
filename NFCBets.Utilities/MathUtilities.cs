@@ -178,4 +178,5 @@ public static class MathUtilities
 
         return sumProduct / Math.Sqrt(sumXSquared * sumYSquared);
     }
+
 }

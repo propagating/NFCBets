@@ -1,8 +1,10 @@
 using Microsoft.ML;
+using NFCBets.Classical.Models;
 using NFCBets.EF.Models;
 using NFCBets.Services.Models;
 
-namespace NFCBets.Services.Interfaces;
+
+namespace NFCBets.Evaluation.Interfaces;
 
 public interface IModelEvaluationService
 {

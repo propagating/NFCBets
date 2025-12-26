@@ -1,4 +1,5 @@
 using Microsoft.ML;
+using NFCBets.Classical.Models;
 using NFCBets.Services.Interfaces;
 using NFCBets.Services.Models;
 using NFCBets.Utilities;
@@ -126,8 +127,8 @@ public class CrossValidationService : ICrossValidationService
         List<PirateFeatureRecord> testData, int foldNumber)
     {
         // Convert to ML format
-        var mlTrainData = ConvertToMLFormat(trainData);
-        var mlTestData = ConvertToMLFormat(testData);
+        var mlTrainData = ConvertToMlFormat(trainData);
+        var mlTestData = ConvertToMlFormat(testData);
 
         var trainDataView = _mlContext.Data.LoadFromEnumerable(mlTrainData);
         var testDataView = _mlContext.Data.LoadFromEnumerable(mlTestData);
@@ -168,11 +169,12 @@ public class CrossValidationService : ICrossValidationService
         };
     }
 
-    private List<MlPirateFeature> ConvertToMLFormat(List<PirateFeatureRecord> features)
+    private List<MlPirateFeature> ConvertToMlFormat(List<PirateFeatureRecord> features)
     {
         return features.Select(f => new MlPirateFeature
         {
             Position = f.Position,
+            ArenaId = f.ArenaId,  // ✅ Add this
             CurrentOdds = Math.Max(2, f.CurrentOdds),
             FoodAdjustment = f.FoodAdjustment,
             Strength = f.Strength,

@@ -269,12 +269,12 @@ public class BettingPerformanceEvaluator : IBettingPerformanceEvaluator
             Console.WriteLine($"🎯 {strategy.StrategyName.ToUpper()}");
             Console.WriteLine("   Returns:");
             Console.WriteLine($"      Net Profit:     {strategy.NetProfit:+N0;-N0} NP");
-            Console.WriteLine($"      ROI:            {strategy.ROI:+P2;-P2}");
+            Console.WriteLine($"      ROI:            {strategy.ROI:+0.00%;-0.00%;0.00%}");
             Console.WriteLine($"      Hit Rate:       {strategy.HitRate:P2}");
             Console.WriteLine("   Consistency:");
             Console.WriteLine(
                 $"      Winning Days:   {strategy.WinningDays}/{strategy.TotalDays} ({strategy.WinningDaysPercentage:P2})");
-            Console.WriteLine($"      Median ROI:     {strategy.MedianDailyROI:+P2;-P2}");
+            Console.WriteLine($"      Median ROI:     {strategy.MedianDailyROI:+0.00%;-0.00%;0.00%}");
             Console.WriteLine($"      Win Streak:     {strategy.WinStreakMax} days");
             Console.WriteLine($"      Loss Streak:    {strategy.LossStreakMax} days");
             Console.WriteLine("   Risk Metrics:");
@@ -293,7 +293,7 @@ public class BettingPerformanceEvaluator : IBettingPerformanceEvaluator
         Console.WriteLine($"🏆 RECOMMENDED STRATEGY: {bestStrategy.StrategyName}");
         Console.WriteLine($"   Risk-Adjusted Score: {bestStrategy.RiskAdjustedScore:F3}");
         Console.WriteLine($"   Sharpe Ratio: {bestStrategy.SharpeRatio:F2}");
-        Console.WriteLine($"   ROI: {bestStrategy.ROI:+P2;-P2}");
+        Console.WriteLine($"   ROI: {bestStrategy.ROI:+0.00%;-0.00%;0.00%}");
     }
 }
 

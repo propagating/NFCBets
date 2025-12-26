@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using NFCBets.Classical.Models;
 using NFCBets.EF.Models;
 using NFCBets.Services.Interfaces;
 using NFCBets.Services.Models;
@@ -25,32 +26,36 @@ public class FeatureEngineeringService : IFeatureEngineeringService
         // EXCLUDE 1:1 odds at query level
         var features = new List<PirateFeatureRecord>();
 
-        Console.WriteLine($"   Loading placements for round {roundId}...");
+        //Console.WriteLine($"   Loading placements for round {roundId}...");
 
         // Check total placements first
         var allPlacements = await _context.RoundPiratePlacements
             .Where(rpp => rpp.RoundId == roundId)
             .ToListAsync();
+        
+        if (!allPlacements.Any())
+        {
+            Console.WriteLine($"   ⚠️ WARNING: No valid placements for round {roundId}!");
+            return features;
+        }
 
-        Console.WriteLine($"   Found {allPlacements.Count} total placements");
+
+        //Console.WriteLine($"   Found {allPlacements.Count} total placements");
 
         // Filter out 1:1 odds
         var placements = allPlacements
             .Where(p => (p.CurrentOdds ?? p.StartingOdds) > 1)
             .ToList();
 
-        Console.WriteLine($"   After filtering 1:1 odds: {placements.Count} valid placements");
-        Console.WriteLine($"   Filtered out: {allPlacements.Count - placements.Count} pirates with 1:1 odds");
+        //Console.WriteLine($"   After filtering 1:1 odds: {placements.Count} valid placements");
+        //Console.WriteLine($"   Filtered out: {allPlacements.Count - placements.Count} pirates with 1:1 odds");
 
         if (!placements.Any())
         {
-            Console.WriteLine("   ⚠️ WARNING: No valid placements after filtering!");
+            Console.WriteLine($"   ⚠️ WARNING: No valid placements after filtering for round {roundId}!");
             Console.WriteLine("   All pirates have 1:1 odds - this round has no betting opportunities");
             return features;
         }
-
-
-        if (!placements.Any()) return features;
 
         // Get all pirate IDs involved
         var pirateIds = placements
@@ -264,7 +269,7 @@ public class FeatureEngineeringService : IFeatureEngineeringService
         // Use cached results (no DB query)
         var historicalResults = _allHistoricalResultsCache!
             .GetValueOrDefault(pirateId, new List<RoundResult>())
-            .Where(rr => rr.RoundId < roundId)
+            .Where(rr => rr.RoundId < roundId)  // ✅ This MUST be here
             .ToList();
 
         // Calculate all stats from cached data (all in-memory, no DB queries)

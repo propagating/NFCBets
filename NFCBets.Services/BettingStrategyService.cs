@@ -1,6 +1,7 @@
 using NFCBets.Services.Enums;
 using NFCBets.Services.Interfaces;
 using NFCBets.Services.Models;
+using NFCBets.Classical.Models;
 
 namespace NFCBets.Services;
 
@@ -636,4 +637,5 @@ public class BettingStrategyService : IBettingStrategyService
             _ => bets.OrderByDescending(b => b.ExpectedValue).ToList()
         };
     }
+    
 }

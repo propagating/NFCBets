@@ -1,3 +1,4 @@
+using NFCBets.Classical.Models;
 using NFCBets.Services.Models;
 
 namespace NFCBets.Services.Interfaces;

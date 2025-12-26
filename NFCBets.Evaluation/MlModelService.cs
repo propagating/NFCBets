@@ -2,9 +2,12 @@ using System.Text.Json;
 using Microsoft.ML;
 using NFCBets.Causal;
 using NFCBets.Causal.Models;
+using NFCBets.Classical.Models;
 using NFCBets.EF.Models;
+using NFCBets.Evaluation;
 using NFCBets.Services.Interfaces;
 using NFCBets.Services.Models;
+
 
 namespace NFCBets.Services;
 
@@ -81,11 +84,21 @@ public class MlModelService : IMlModelService
 
         // Step 6: Train final causal model
         Console.WriteLine("\n🏋️ Step 6: Training Final Causal Model...");
+    
+        // ✅ FIX: Split by ROUNDS
         var sortedData = filteredData.OrderBy(f => f.RoundId).ToList();
-        var splitIndex = (int)(sortedData.Count * 0.8);
+        var uniqueRounds = sortedData.Select(f => f.RoundId).Distinct().OrderBy(r => r).ToList();
+        var roundSplitIndex = (int)(uniqueRounds.Count * 0.8);
+    
+        var trainRoundIds = uniqueRounds.Take(roundSplitIndex).ToHashSet();
+        var testRoundIds = uniqueRounds.Skip(roundSplitIndex).ToHashSet();
+    
+        var trainData = sortedData.Where(f => trainRoundIds.Contains(f.RoundId)).ToList();
+        var testData = sortedData.Where(f => testRoundIds.Contains(f.RoundId)).ToList();
 
-        var trainData = sortedData.Take(splitIndex).ToList();
-        var testData = sortedData.Skip(splitIndex).ToList();
+        Console.WriteLine($"   Training: {trainData.Count} records (rounds {trainData.Min(f => f.RoundId)}-{trainData.Max(f => f.RoundId)})");
+        Console.WriteLine($"   Testing:  {testData.Count} records (rounds {testData.Min(f => f.RoundId)}-{testData.Max(f => f.RoundId)})");
+
 
         var mlTrainData = ConvertToMlFormat(trainData);
         var dataView = _mlContext.Data.LoadFromEnumerable(mlTrainData);
@@ -156,12 +169,12 @@ public class MlModelService : IMlModelService
             throw new InvalidOperationException("Data validation failed with critical issues");
         }
 
-        var allData = await _featureService.CreateTrainingDataAsync();
+
+        var allData = await _featureService.CreateTrainingDataAsync(4000);
         var validData = allData.Where(f => f.IsWinner.HasValue).ToList();
 
         Console.WriteLine($"Total valid training data: {validData.Count} records");
 
-        // Skip first 100 rounds
         var minRound = validData.Min(f => f.RoundId);
         var filteredData = validData.Where(f => f.RoundId > minRound + 100).ToList();
 
@@ -216,16 +229,27 @@ public class MlModelService : IMlModelService
         // Step 3: Train final model on all data
         Console.WriteLine("\n🏋️ Step 3: Training final model on full dataset...");
         var sortedData = filteredData.OrderBy(f => f.RoundId).ToList();
-        var splitIndex = (int)(sortedData.Count * 0.8);
+        var uniqueRounds = sortedData.Select(f => f.RoundId).Distinct().OrderBy(r => r).ToList();
+        var roundSplitIndex = (int)(uniqueRounds.Count * 0.8);
+    
+        var trainRoundIds = uniqueRounds.Take(roundSplitIndex).ToHashSet();
+        var testRoundIds = uniqueRounds.Skip(roundSplitIndex).ToHashSet();
+    
+        var trainData = sortedData.Where(f => trainRoundIds.Contains(f.RoundId)).ToList();
+        var testData = sortedData.Where(f => testRoundIds.Contains(f.RoundId)).ToList();
 
-        var trainData = sortedData.Take(splitIndex).ToList();
-        var testData = sortedData.Skip(splitIndex).ToList();
-
-        Console.WriteLine(
-            $"   Training: {trainData.Count} records (rounds {trainData.Min(f => f.RoundId)}-{trainData.Max(f => f.RoundId)})");
-        Console.WriteLine(
-            $"   Testing:  {testData.Count} records (rounds {testData.Min(f => f.RoundId)}-{testData.Max(f => f.RoundId)})");
-
+        Console.WriteLine($"   Training: {trainData.Count} records (rounds {trainData.Min(f => f.RoundId)}-{trainData.Max(f => f.RoundId)})");
+        Console.WriteLine($"   Testing:  {testData.Count} records (rounds {testData.Min(f => f.RoundId)}-{testData.Max(f => f.RoundId)})");
+    
+        // Verify no overlap
+        var trainMax = trainData.Max(f => f.RoundId);
+        var testMin = testData.Min(f => f.RoundId);
+    
+        if (trainMax >= testMin)
+        {
+            throw new InvalidOperationException($"Train/test overlap detected: train max={trainMax}, test min={testMin}");
+        }
+        
         var mlTrainData = ConvertToMlFormat(trainData);
         var dataView = _mlContext.Data.LoadFromEnumerable(mlTrainData);
 
@@ -392,63 +416,107 @@ public class MlModelService : IMlModelService
         Console.WriteLine($"📂 Model loaded from {path}");
     }
 
-    private FeatureSelectionResult SelectFeaturesBasedOnCausalAnalysis(ComprehensiveCausalReport causalReport)
+   private FeatureSelectionResult SelectFeaturesBasedOnCausalAnalysis(ComprehensiveCausalReport causalReport)
+{
+    var result = new FeatureSelectionResult();
+    var featureEffects = new Dictionary<string, double>();
+
+    // Food adjustment
+    if (causalReport.FoodAdjustmentEffect.IsSignificant)
     {
-        var result = new FeatureSelectionResult();
-        var featureEffects = new Dictionary<string, double>();
-
-        // Map causal effects to ML features
-        if (causalReport.FoodAdjustmentEffect.IsSignificant)
-        {
-            result.SelectedFeatures.Add(nameof(MlPirateFeature.FoodAdjustment));
-            featureEffects[nameof(MlPirateFeature.FoodAdjustment)] =
-                causalReport.FoodAdjustmentEffect.AverageTreatmentEffect;
-        }
-        else
-        {
-            result.ExcludedFeatures.Add(nameof(MlPirateFeature.FoodAdjustment));
-        }
-
-
-        if (causalReport.RivalStrengthEffect.IsSignificant)
-        {
-            result.SelectedFeatures.Add(nameof(MlPirateFeature.AvgRivalStrength));
-            result.SelectedFeatures.Add(nameof(MlPirateFeature.WinRateVsCurrentRivals));
-            featureEffects[nameof(MlPirateFeature.AvgRivalStrength)] =
-                causalReport.RivalStrengthEffect.AverageTreatmentEffect;
-        }
-        else
-        {
-            result.ExcludedFeatures.Add(nameof(MlPirateFeature.AvgRivalStrength));
-            result.ExcludedFeatures.Add(nameof(MlPirateFeature.WinRateVsCurrentRivals));
-        }
-
-        if (causalReport.OddsEffect.IsSignificant)
-        {
-            result.SelectedFeatures.Add(nameof(MlPirateFeature.CurrentOdds));
-            featureEffects[nameof(MlPirateFeature.CurrentOdds)] = causalReport.OddsEffect.AverageTreatmentEffect;
-        }
-        else
-        {
-            result.ExcludedFeatures.Add(nameof(MlPirateFeature.CurrentOdds));
-        }
-
-        // Always include proven predictors (may not be causal but are predictive)
-        result.SelectedFeatures.Add(nameof(MlPirateFeature.HistoricalWinRate));
-        result.SelectedFeatures.Add(nameof(MlPirateFeature.ArenaWinRate));
-        result.SelectedFeatures.Add(nameof(MlPirateFeature.RecentWinRate));
-
-        // Include pirate attributes if they have effects
-        if (Math.Abs(featureEffects.Values.DefaultIfEmpty(0).Average()) > 0.01)
-        {
-            result.SelectedFeatures.Add(nameof(MlPirateFeature.Strength));
-            result.SelectedFeatures.Add(nameof(MlPirateFeature.Weight));
-        }
-
-        result.FeatureEffects = featureEffects;
-
-        return result;
+        result.SelectedFeatures.Add(nameof(MlPirateFeature.FoodAdjustment));
+        featureEffects[nameof(MlPirateFeature.FoodAdjustment)] =
+            causalReport.FoodAdjustmentEffect.AverageTreatmentEffect;
     }
+    else
+    {
+        result.ExcludedFeatures.Add(nameof(MlPirateFeature.FoodAdjustment));
+    }
+
+    // ✅ FIX: Check new seat position joint test property
+    if (causalReport.OverallSeatPositionJointTest?.IsSignificant == true)
+    {
+        result.SelectedFeatures.Add(nameof(MlPirateFeature.Position));
+        
+        // Use the strongest individual position effect as the feature effect
+        if (causalReport.EachSeatVsOthersEffects.Any())
+        {
+            var strongestEffect = causalReport.EachSeatVsOthersEffects.Values
+                .OrderByDescending(e => Math.Abs(e.AverageTreatmentEffect))
+                .First();
+            featureEffects[nameof(MlPirateFeature.Position)] = strongestEffect.AverageTreatmentEffect;
+        }
+        else
+        {
+            featureEffects[nameof(MlPirateFeature.Position)] = causalReport.OverallSeatPositionJointTest.AverageTreatmentEffect;
+        }
+    }
+    else
+    {
+        result.ExcludedFeatures.Add(nameof(MlPirateFeature.Position));
+    }
+
+    // ✅ NEW: Add ArenaId as a feature if arena matters
+    if (causalReport.OverallArenaJointTest?.IsSignificant == true)
+    {
+        // Note: ArenaId needs to be added to MlPirateFeature if not already there
+        // For now, we can use it as a categorical indicator
+        result.SelectedFeatures.Add("ArenaId"); // Or create arena dummy variables
+        
+        if (causalReport.IndividualArenaEffects.Any())
+        {
+            var strongestArenaEffect = causalReport.IndividualArenaEffects.Values
+                .OrderByDescending(e => Math.Abs(e.AverageTreatmentEffect))
+                .First();
+            featureEffects["ArenaId"] = strongestArenaEffect.AverageTreatmentEffect;
+        }
+        else
+        {
+            featureEffects["ArenaId"] = causalReport.OverallArenaJointTest.AverageTreatmentEffect;
+        }
+    }
+
+    // Rival strength
+    if (causalReport.RivalStrengthEffect.IsSignificant)
+    {
+        result.SelectedFeatures.Add(nameof(MlPirateFeature.AvgRivalStrength));
+        result.SelectedFeatures.Add(nameof(MlPirateFeature.WinRateVsCurrentRivals));
+        featureEffects[nameof(MlPirateFeature.AvgRivalStrength)] =
+            causalReport.RivalStrengthEffect.AverageTreatmentEffect;
+    }
+    else
+    {
+        result.ExcludedFeatures.Add(nameof(MlPirateFeature.AvgRivalStrength));
+        result.ExcludedFeatures.Add(nameof(MlPirateFeature.WinRateVsCurrentRivals));
+    }
+
+    // Odds effect
+    if (causalReport.OddsEffect.IsSignificant)
+    {
+        result.SelectedFeatures.Add(nameof(MlPirateFeature.CurrentOdds));
+        featureEffects[nameof(MlPirateFeature.CurrentOdds)] = causalReport.OddsEffect.AverageTreatmentEffect;
+    }
+    else
+    {
+        result.ExcludedFeatures.Add(nameof(MlPirateFeature.CurrentOdds));
+    }
+
+    // Always include proven predictors (may not be causal but are predictive)
+    result.SelectedFeatures.Add(nameof(MlPirateFeature.HistoricalWinRate));
+    result.SelectedFeatures.Add(nameof(MlPirateFeature.ArenaWinRate));
+    result.SelectedFeatures.Add(nameof(MlPirateFeature.RecentWinRate));
+
+    // Include pirate attributes if any causal effects exist
+    if (featureEffects.Values.Any(v => Math.Abs(v) > 0.01))
+    {
+        result.SelectedFeatures.Add(nameof(MlPirateFeature.Strength));
+        result.SelectedFeatures.Add(nameof(MlPirateFeature.Weight));
+    }
+
+    result.FeatureEffects = featureEffects;
+
+    return result;
+}
 
     private async Task<ITransformer> TrainStandardModelForComparison(List<PirateFeatureRecord> trainData)
     {
@@ -503,14 +571,14 @@ public class MlModelService : IMlModelService
             causalReport.RivalStrengthEffect.AverageTreatmentEffect < -0.03)
         {
             findings.Add(
-                $"Strong rivals significantly reduce win probability ({causalReport.RivalStrengthEffect.AverageTreatmentEffect:P1})");
+                $"Strong rivals significantly reduce win probability ({causalReport.RivalStrengthEffect.AverageTreatmentEffect:+0.00%;-0.00%;0.00%})");
             recommendations.Add("Head-to-head matchups are critical - include rival analysis in all strategies");
         }
 
         // Odds insights
         if (causalReport.OddsEffect.IsSignificant)
         {
-            findings.Add($"Favorite status has causal effect ({causalReport.OddsEffect.AverageTreatmentEffect:+P1})");
+            findings.Add($"Favorite status has causal effect ({causalReport.OddsEffect.AverageTreatmentEffect:+0.00%;-0.00%;0.00%})");
 
             if (causalReport.OddsEffect.DoseResponse != null)
             {
@@ -665,6 +733,7 @@ public class MlModelService : IMlModelService
         return features.Select(f => new MlPirateFeature
         {
             Position = f.Position,
+            ArenaId = f.ArenaId,  // ✅ Add this
             CurrentOdds = Math.Max(2, f.CurrentOdds),
             FoodAdjustment = f.FoodAdjustment,
             Strength = f.Strength,

@@ -127,6 +127,25 @@ public class FoodClubRepository(NfcbetsContext context) : IFoodClubRepository
         var resultLookup = existingResults
             .ToDictionary(r => new { r.RoundId, r.ArenaId, r.PirateId }, r => r);
 
+        // OPTIMIZATION: Pre-fetch ALL food category data for the round to avoid N+1 queries
+        var allFoodIds = round.Foods.SelectMany(f => f).Distinct().ToList();
+        var allPirateIds = round.Pirates.SelectMany(p => p).Distinct().ToList();
+
+        var foodCategoryMap = await _db.FoodCategoryFoods
+            .Where(fcf => allFoodIds.Contains(fcf.FoodId))
+            .Select(fcf => new { fcf.FoodId, fcf.FoodCategoryId })
+            .ToListAsync();
+
+        var categoryIds = foodCategoryMap.Select(x => x.FoodCategoryId).Distinct().ToList();
+
+        var prefs = await _db.FoodCategoryPreferences
+            .Where(fp => allPirateIds.Contains(fp.PirateId) && categoryIds.Contains(fp.FoodCategoryId))
+            .ToListAsync();
+
+        var allergies = await _db.FoodCategoryAllergies
+            .Where(fa => allPirateIds.Contains(fa.PirateId) && categoryIds.Contains(fa.FoodCategoryId))
+            .ToListAsync();
+        
         for (var i = 0; i < round.Pirates.Count; i++)
         {
             var arenaId = i + 1;
@@ -141,9 +160,12 @@ public class FoodClubRepository(NfcbetsContext context) : IFoodClubRepository
             for (var p = 0; p < pirateIds.Count; p++)
             {
                 var pirate = pirateIds[p];
-                var placementKey = new
-                    { RoundId = (int?)round.Round, ArenaId = (int?)arenaId, PirateId = (int?)pirate };
                 var foodIdsForArena = round.Foods[i];
+                var arenaCategories = foodCategoryMap.Where(x => foodIdsForArena.Contains(x.FoodId)).Select(x => x.FoodCategoryId).ToList();
+                var adjustmenttest = prefs.Count(x => x.PirateId == pirate && arenaCategories.Contains(x.FoodCategoryId)) -
+                                 allergies.Count(x => x.PirateId == pirate && arenaCategories.Contains(x.FoodCategoryId));
+                
+                var placementKey = new { RoundId = (int?)round.Round, ArenaId = (int?)arenaId, PirateId = (int?)pirate };
                 var oddsPosition = p + 1;
                 var adjustment = await CalculatePirateFoodAdjustmentAsync(pirate, foodIdsForArena);
                 if (placementLookup.TryGetValue(placementKey, out var existingPlacement))

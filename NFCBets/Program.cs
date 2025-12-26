@@ -19,8 +19,8 @@ internal class Program
 {
     private static async Task Main(string[] args)
     {
-        var startRound = 9700;
-        var currentRound = 9722;
+        var startRound = 5700;
+        var currentRound = 9730;
         var modelPath = "Models/foodclub_mp.cd.vd.r.e.cs.c.bt_model.zip";
 
         args = args.Length == 0
@@ -53,9 +53,10 @@ internal class Program
                 services.AddScoped<IMlModelService, MlModelService>();
                 services.AddScoped<IBettingStrategyService, BettingStrategyService>();
                 services.AddScoped<IDailyBettingPipeline, DailyBettingPipeline>();
-                services.AddScoped<IBettingPerformanceEvaluator, BettingPerformanceEvaluator>();
                 services.AddScoped<ICausalInferenceService, CausalInferenceService>();
+                services.AddScoped<IBettingPerformanceEvaluator, BettingPerformanceEvaluator>();
                 services.AddScoped<IBettingStrategyComparisonService, BettingStrategyComparisonService>();
+                services.AddScoped<IMlStrategyComparisonService, MlStrategyComparisonService>();
                 services.AddScoped<ICrossValidationService, CrossValidationService>();
                 services.AddHttpClient<IFoodClubDataService, FoodClubDataService>();
                 services.AddScoped<IDataValidationService, DataValidationService>();

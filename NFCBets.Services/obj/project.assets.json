@@ -42,8 +42,7 @@
       "LightGBM/4.6.0": {
         "type": "package",
         "build": {
-          "build/LightGBM.props": {},
-          "build/LightGBM.targets": {}
+          "build/_._": {}
         },
         "runtimeTargets": {
           "runtimes/linux-x64/native/lib_lightgbm.so": {
@@ -1146,6 +1145,20 @@
         },
         "runtime": {
           "bin/placeholder/NFCBets.Causal.dll": {}
+        }
+      },
+      "NFCBets.Classical/1.0.0": {
+        "type": "project",
+        "framework": ".NETCoreApp,Version=v10.0",
+        "dependencies": {
+          "Microsoft.ML": "5.0.0",
+          "Microsoft.ML.LightGbm": "5.0.0"
+        },
+        "compile": {
+          "bin/placeholder/NFCBets.Classical.dll": {}
+        },
+        "runtime": {
+          "bin/placeholder/NFCBets.Classical.dll": {}
         }
       },
       "NFCBets.EF/1.0.0": {
@@ -2691,6 +2704,11 @@
       "path": "../NFCBets.Causal/NFCBets.Causal.csproj",
       "msbuildProject": "../NFCBets.Causal/NFCBets.Causal.csproj"
     },
+    "NFCBets.Classical/1.0.0": {
+      "type": "project",
+      "path": "../NFCBets.Classical/NFCBets.Classical.csproj",
+      "msbuildProject": "../NFCBets.Classical/NFCBets.Classical.csproj"
+    },
     "NFCBets.EF/1.0.0": {
       "type": "project",
       "path": "../NFCBets.EF/NFCBets.EF.csproj",
@@ -2711,8 +2729,8 @@
     "net10.0": [
       "Microsoft.Extensions.Logging.Abstractions >= 10.0.0",
       "Microsoft.ML >= 5.0.0",
-      "Microsoft.ML.LightGbm >= 5.0.0",
       "NFCBets.Causal >= 1.0.0",
+      "NFCBets.Classical >= 1.0.0",
       "NFCBets.Repository >= 1.0.0",
       "NFCBets.Utilities >= 1.0.0"
     ]
@@ -2753,6 +2771,9 @@
             "E:\\Projects\\C#\\NFCBets\\NFCBets.Causal\\NFCBets.Causal.csproj": {
               "projectPath": "E:\\Projects\\C#\\NFCBets\\NFCBets.Causal\\NFCBets.Causal.csproj"
             },
+            "E:\\Projects\\C#\\NFCBets\\NFCBets.Classical\\NFCBets.Classical.csproj": {
+              "projectPath": "E:\\Projects\\C#\\NFCBets\\NFCBets.Classical\\NFCBets.Classical.csproj"
+            },
             "E:\\Projects\\C#\\NFCBets\\NFCBets.Repository\\NFCBets.Repository.csproj": {
               "projectPath": "E:\\Projects\\C#\\NFCBets\\NFCBets.Repository\\NFCBets.Repository.csproj"
             },
@@ -2783,10 +2804,6 @@
             "version": "[10.0.0, )"
           },
           "Microsoft.ML": {
-            "target": "Package",
-            "version": "[5.0.0, )"
-          },
-          "Microsoft.ML.LightGbm": {
             "target": "Package",
             "version": "[5.0.0, )"
           }

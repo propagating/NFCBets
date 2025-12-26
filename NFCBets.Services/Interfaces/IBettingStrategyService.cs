@@ -1,3 +1,4 @@
+using NFCBets.Classical.Models;
 using NFCBets.Services.Enums;
 using NFCBets.Services.Models;
 

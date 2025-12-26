@@ -1,10 +1,13 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.ML;
+using NFCBets.Classical.Models;
 using NFCBets.EF.Models;
-using NFCBets.Services.Interfaces;
+using NFCBets.Evaluation.Interfaces;
+using NFCBets.Evaluation.Models;
 using NFCBets.Services.Models;
 
-namespace NFCBets.Services;
+//TODO: Refactor this to be part of the Evaluation project without a cricular reference
+namespace NFCBets.Evaluation;
 
 public class ModelEvaluationService : IModelEvaluationService
 {
@@ -19,7 +22,7 @@ public class ModelEvaluationService : IModelEvaluationService
     {
         Console.WriteLine("📊 Evaluating model performance...");
 
-        var mlTestData = ConvertToMLFormat(testData);
+        var mlTestData = ConvertToMlFormat(testData);
         var testDataView = _mlContext.Data.LoadFromEnumerable(mlTestData);
         var predictions = model.Transform(testDataView);
 
@@ -61,7 +64,7 @@ public class ModelEvaluationService : IModelEvaluationService
         Console.WriteLine("🔍 Analyzing feature importance...");
 
         var report = new FeatureImportanceReport();
-        var mlData = ConvertToMLFormat(trainingData);
+        var mlData = ConvertToMlFormat(trainingData);
 
         // Test each feature individually
         var featureTests = new List<(string FeatureName, double AUC)>();
@@ -108,141 +111,132 @@ public class ModelEvaluationService : IModelEvaluationService
         var report = new DataLeakageReport();
         var leakageIssues = new List<string>();
 
-        // Check 1: Only flag perfect correlations with SUFFICIENT data
-        foreach (var feature in features.Where(f => f.IsWinner.HasValue).Take(100))
-        {
-            if (!feature.IsWinner!.Value) continue;
-            // Only flag if there's enough historical data (more than 10 appearances)
-            if (feature.TotalAppearances > 10)
-            {
-                if (feature.HistoricalWinRate > 0.95)
-                    leakageIssues.Add(
-                        $"Round {feature.RoundId}, Pirate {feature.PirateId}: High historical win rate ({feature.HistoricalWinRate:P2}) with {feature.TotalAppearances} appearances");
-
-                if (Math.Abs(feature.ArenaWinRate - 1.0) < 0.0001 && feature.TotalAppearances > 15)
-                    leakageIssues.Add(
-                        $"Round {feature.RoundId}, Pirate {feature.PirateId}: Perfect arena win rate with {feature.TotalAppearances} appearances");
-            }
-
-            // Only check rival win rate if there have been enough matchups
-            if (feature.MatchesVsCurrentRivals > 10 && feature.WinRateVsCurrentRivals > 0.95)
-                leakageIssues.Add(
-                    $"Round {feature.RoundId}, Pirate {feature.PirateId}: High rival win rate ({feature.WinRateVsCurrentRivals:P2}) with {feature.MatchesVsCurrentRivals} matchups");
-        }
-
-        // Check 2: Temporal validation - verify features use only PAST data
+        // ✅ CORRECT CHECK: Verify historical stats only use PAST data
         var roundGroups = features
             .Where(f => f.IsWinner.HasValue)
             .GroupBy(f => f.RoundId)
             .OrderBy(g => g.Key)
-            .Take(20) // Check first 20 rounds
+            .Take(50) // Check first 50 rounds
             .ToList();
 
         foreach (var roundGroup in roundGroups)
         {
             var roundId = roundGroup.Key;
 
-            foreach (var feature in roundGroup.Take(3)) // Sample 3 pirates per round
+            foreach (var feature in roundGroup.Take(5)) // Sample 5 pirates per round
             {
-                // Verify TotalAppearances only counts rounds BEFORE current round
+                // ✅ Count actual historical appearances (rounds BEFORE current)
                 var actualHistoricalCount = await context.RoundResults
                     .Where(rr => rr.PirateId == feature.PirateId &&
                                  rr.RoundId.HasValue &&
-                                 rr.RoundId < roundId && // Only PAST rounds
+                                 rr.RoundId < roundId &&  // Only PAST rounds
                                  rr.IsComplete)
                     .CountAsync();
 
-                // Allow small margin of error (±1)
+                // Check if TotalAppearances exceeds what it should be
                 if (feature.TotalAppearances > actualHistoricalCount + 1)
-                    leakageIssues.Add(
-                        $"Round {roundId}, Pirate {feature.PirateId}: TotalAppearances={feature.TotalAppearances} exceeds historical={actualHistoricalCount}");
-
-                // Check that no FUTURE data is included (current round is OK - we're predicting FOR it)
-                // ⚠️ FIX: Change >= to > to exclude only FUTURE rounds, not current
-                var futureDataCount = await context.RoundResults
-                    .Where(rr => rr.PirateId == feature.PirateId &&
-                                 rr.RoundId.HasValue &&
-                                 rr.RoundId > roundId && // ✅ FIXED: Only FUTURE rounds (not current)
-                                 rr.IsComplete)
-                    .CountAsync();
-
-                if (futureDataCount > 0)
                 {
-                    // This would indicate historical calculations include FUTURE rounds (real leak)
-                    var futureRounds = await context.RoundResults
+                    leakageIssues.Add(
+                        $"❌ CRITICAL: Round {roundId}, Pirate {feature.PirateId}: " +
+                        $"TotalAppearances={feature.TotalAppearances} but actual historical count={actualHistoricalCount}");
+                }
+                
+                // ✅ Verify historical win rate calculation
+                if (actualHistoricalCount > 0)
+                {
+                    var actualHistoricalWins = await context.RoundResults
                         .Where(rr => rr.PirateId == feature.PirateId &&
                                      rr.RoundId.HasValue &&
-                                     rr.RoundId > roundId && // ✅ FIXED: Only FUTURE rounds
-                                     rr.IsComplete)
-                        .Select(rr => rr.RoundId!.Value)
-                        .Take(5)
-                        .ToListAsync();
-
-                    leakageIssues.Add(
-                        $"❌ CRITICAL: Round {roundId}, Pirate {feature.PirateId}: Historical features include FUTURE rounds: {string.Join(",", futureRounds)}");
+                                     rr.RoundId < roundId &&
+                                     rr.IsComplete &&
+                                     rr.IsWinner)
+                        .CountAsync();
+                    
+                    var expectedWinRate = actualHistoricalWins / (double)actualHistoricalCount;
+                    var diff = Math.Abs(feature.HistoricalWinRate - expectedWinRate);
+                    
+                    // Allow small floating point errors (0.001)
+                    if (diff > 0.001 && actualHistoricalCount > 10)
+                    {
+                        leakageIssues.Add(
+                            $"❌ CRITICAL: Round {roundId}, Pirate {feature.PirateId}: " +
+                            $"HistoricalWinRate={feature.HistoricalWinRate:F4} but should be {expectedWinRate:F4}");
+                    }
+                }
+                
+                // ✅ Check recent form uses only last N rounds BEFORE current
+                var recentRounds = await context.RoundResults
+                    .Where(rr => rr.PirateId == feature.PirateId &&
+                                 rr.RoundId.HasValue &&
+                                 rr.RoundId < roundId &&
+                                 rr.IsComplete)
+                    .OrderByDescending(rr => rr.RoundId)
+                    .Take(10)
+                    .ToListAsync();
+                
+                if (recentRounds.Any())
+                {
+                    var expectedRecentWinRate = recentRounds.Average(rr => rr.IsWinner ? 1.0 : 0.0);
+                    var recentDiff = Math.Abs(feature.RecentWinRate - expectedRecentWinRate);
+                    
+                    if (recentDiff > 0.001 && recentRounds.Count >= 5)
+                    {
+                        leakageIssues.Add(
+                            $"❌ CRITICAL: Round {roundId}, Pirate {feature.PirateId}: " +
+                            $"RecentWinRate={feature.RecentWinRate:F4} but should be {expectedRecentWinRate:F4}");
+                    }
                 }
             }
         }
 
-        // Check 3: Train/test temporal separation
+// Check 3: Train/test temporal separation
         var sortedFeatures = features.Where(f => f.IsWinner.HasValue).OrderBy(f => f.RoundId).ToList();
 
         if (sortedFeatures.Count >= 100)
         {
-            var splitPoint = (int)(sortedFeatures.Count * 0.8);
-            var trainRounds = sortedFeatures.Take(splitPoint).Select(f => f.RoundId).Distinct().OrderBy(r => r)
-                .ToList();
-            var testRounds = sortedFeatures.Skip(splitPoint).Select(f => f.RoundId).Distinct().OrderBy(r => r).ToList();
+            // ✅ FIX: Split by ROUNDS, not by record count
+            var uniqueRounds = sortedFeatures.Select(f => f.RoundId).Distinct().OrderBy(r => r).ToList();
+            var roundSplitPoint = (int)(uniqueRounds.Count * 0.8);
 
-            // Ensure test rounds come AFTER train rounds
-            if (trainRounds.Any() && testRounds.Any())
+            var trainRoundIds = uniqueRounds.Take(roundSplitPoint).ToHashSet();
+            var testRoundIds = uniqueRounds.Skip(roundSplitPoint).ToHashSet();
+
+            var trainRounds = sortedFeatures.Where(f => trainRoundIds.Contains(f.RoundId)).ToList();
+            var testRounds = sortedFeatures.Where(f => testRoundIds.Contains(f.RoundId)).ToList();
+
+            // Get min/max for each set
+            var trainMin = trainRounds.Min(f => f.RoundId);
+            var trainMax = trainRounds.Max(f => f.RoundId);
+            var testMin = testRounds.Min(f => f.RoundId);
+            var testMax = testRounds.Max(f => f.RoundId);
+
+            // ✅ Ensure NO overlap (trainMax must be < testMin)
+            if (trainMax >= testMin)
             {
-                if (trainRounds.Max() >= testRounds.Min())
-                    leakageIssues.Add(
-                        $"❌ CRITICAL: Train rounds ({trainRounds.Max()}) overlap with test rounds ({testRounds.Min()})");
-                else
-                    Console.WriteLine(
-                        $"   ✅ Temporal separation verified: Train max={trainRounds.Max()}, Test min={testRounds.Min()}");
-
-                report.TrainRoundRange = $"{trainRounds.Min()} to {trainRounds.Max()}";
-                report.TestRoundRange = $"{testRounds.Min()} to {testRounds.Max()}";
+                leakageIssues.Add(
+                    $"❌ CRITICAL: Train rounds ({trainMin}-{trainMax}) overlap with test rounds ({testMin}-{testMax})");
             }
-        }
+            else
+            {
+                Console.WriteLine($"   ✅ Temporal separation verified:");
+                Console.WriteLine($"      Train: rounds {trainMin}-{trainMax} ({trainRounds.Count} records)");
+                Console.WriteLine($"      Test:  rounds {testMin}-{testMax} ({testRounds.Count} records)");
+            }
 
-        report.LeakageIssues = leakageIssues;
-
-        // Only flag CRITICAL issues as actual leakage
-        report.HasLeakage = leakageIssues.Any(issue => issue.Contains("CRITICAL"));
-
-        if (report.HasLeakage)
-        {
-            Console.WriteLine(
-                $"❌ Found {leakageIssues.Count(issue => issue.Contains("CRITICAL"))} CRITICAL data leakage issues:");
-            foreach (var issue in leakageIssues.Where(i => i.Contains("CRITICAL")))
-                Console.WriteLine($"   {issue}");
-        }
-        else if (leakageIssues.Any())
-        {
-            Console.WriteLine($"⚠️ Found {leakageIssues.Count} minor warnings (not actual data leakage):");
-            foreach (var issue in leakageIssues.Take(3))
-                Console.WriteLine($"   {issue}");
-            if (leakageIssues.Count > 3)
-                Console.WriteLine($"   ... and {leakageIssues.Count - 3} more warnings");
-        }
-        else
-        {
-            Console.WriteLine("✅ No data leakage detected");
+            report.TrainRoundRange = $"{trainMin} to {trainMax}";
+            report.TestRoundRange = $"{testMin} to {testMax}";
         }
 
         return report;
     }
-
-    private List<MlPirateFeature> ConvertToMLFormat(List<PirateFeatureRecord> features)
+    
+    private List<MlPirateFeature> ConvertToMlFormat(List<PirateFeatureRecord> features)
     {
         return features.Select(f => new MlPirateFeature
         {
             Position = f.Position,
-            CurrentOdds = f.CurrentOdds,
+            ArenaId = f.ArenaId,  // ✅ Add this
+            CurrentOdds = Math.Max(2, f.CurrentOdds),
             FoodAdjustment = f.FoodAdjustment,
             Strength = f.Strength,
             Weight = f.Weight,
