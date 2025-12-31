@@ -1,15 +1,17 @@
 using System.Text.Json;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.ML;
 using NFCBets.Causal;
 using NFCBets.Causal.Models;
+using NFCBets.Classical.Constants;
 using NFCBets.Classical.Models;
 using NFCBets.EF.Models;
-using NFCBets.Evaluation;
+using NFCBets.Services;
 using NFCBets.Services.Interfaces;
 using NFCBets.Services.Models;
+using NFCBets.Utilities.Models;
 
-
-namespace NFCBets.Services;
+namespace NFCBets.Evaluation;
 
 public class MlModelService : IMlModelService
 {
@@ -19,12 +21,17 @@ public class MlModelService : IMlModelService
     private readonly Dictionary<int, List<PiratePrediction>> _predictionCache = new();
     private ITransformer? _model;
 
+    // Cached pirate names for performance
+    private Dictionary<int, string>? _pirateNamesCache;
+
     public MlModelService(IFeatureEngineeringService featureService, NfcbetsContext context)
     {
         _mlContext = new MLContext(42);
         _featureService = featureService;
         _context = context;
     }
+
+    #region Training Methods
 
     public async Task TrainAndEvaluateCausallyInformedModelAsync()
     {
@@ -56,7 +63,7 @@ public class MlModelService : IMlModelService
 
         // Step 3: Load and prepare training data
         Console.WriteLine("\n📥 Step 3: Loading Training Data...");
-        var allData = await _featureService.CreateTrainingDataAsync();
+        var allData = await _featureService.CreateTrainingDataAsync(int.MaxValue);
         var validData = allData.Where(f => f.IsWinner.HasValue).ToList();
 
         var minRound = validData.Min(f => f.RoundId);
@@ -84,21 +91,21 @@ public class MlModelService : IMlModelService
 
         // Step 6: Train final causal model
         Console.WriteLine("\n🏋️ Step 6: Training Final Causal Model...");
-    
-        // ✅ FIX: Split by ROUNDS
+
         var sortedData = filteredData.OrderBy(f => f.RoundId).ToList();
         var uniqueRounds = sortedData.Select(f => f.RoundId).Distinct().OrderBy(r => r).ToList();
         var roundSplitIndex = (int)(uniqueRounds.Count * 0.8);
-    
+
         var trainRoundIds = uniqueRounds.Take(roundSplitIndex).ToHashSet();
         var testRoundIds = uniqueRounds.Skip(roundSplitIndex).ToHashSet();
-    
+
         var trainData = sortedData.Where(f => trainRoundIds.Contains(f.RoundId)).ToList();
         var testData = sortedData.Where(f => testRoundIds.Contains(f.RoundId)).ToList();
 
-        Console.WriteLine($"   Training: {trainData.Count} records (rounds {trainData.Min(f => f.RoundId)}-{trainData.Max(f => f.RoundId)})");
-        Console.WriteLine($"   Testing:  {testData.Count} records (rounds {testData.Min(f => f.RoundId)}-{testData.Max(f => f.RoundId)})");
-
+        Console.WriteLine(
+            $"   Training: {trainData.Count} records (rounds {trainData.Min(f => f.RoundId)}-{trainData.Max(f => f.RoundId)})");
+        Console.WriteLine(
+            $"   Testing:  {testData.Count} records (rounds {testData.Min(f => f.RoundId)}-{testData.Max(f => f.RoundId)})");
 
         var mlTrainData = ConvertToMlFormat(trainData);
         var dataView = _mlContext.Data.LoadFromEnumerable(mlTrainData);
@@ -153,12 +160,11 @@ public class MlModelService : IMlModelService
         Console.WriteLine("\n✅ Causally-informed model training complete");
     }
 
-
     public async Task TrainAndEvaluateModelAsync()
     {
         Console.WriteLine("🤖 Training and evaluating ML model...");
 
-        // Step 0: DATA VALIDATION (NEW!)
+        // Step 0: DATA VALIDATION
         Console.WriteLine("\n🔍 Step 0: Data Quality Validation...");
         var validationService = new DataValidationService(_context);
         var validationReport = await validationService.ValidateDataQualityAsync(5300, 9705);
@@ -168,7 +174,6 @@ public class MlModelService : IMlModelService
             Console.WriteLine("\n❌ Data validation failed! Please fix critical issues before training.");
             throw new InvalidOperationException("Data validation failed with critical issues");
         }
-
 
         var allData = await _featureService.CreateTrainingDataAsync(4000);
         var validData = allData.Where(f => f.IsWinner.HasValue).ToList();
@@ -222,7 +227,6 @@ public class MlModelService : IMlModelService
                 Console.WriteLine("   📌 Time-Series CV lower suggests model may not generalize well to future data");
         }
 
-        // Use the more conservative estimate
         var expectedAUC = Math.Min(timeSeriesCV.AverageAUC, kFoldCV.AverageAUC);
         Console.WriteLine($"   Expected Real-World AUC: {expectedAUC:F4}");
 
@@ -231,25 +235,26 @@ public class MlModelService : IMlModelService
         var sortedData = filteredData.OrderBy(f => f.RoundId).ToList();
         var uniqueRounds = sortedData.Select(f => f.RoundId).Distinct().OrderBy(r => r).ToList();
         var roundSplitIndex = (int)(uniqueRounds.Count * 0.8);
-    
+
         var trainRoundIds = uniqueRounds.Take(roundSplitIndex).ToHashSet();
         var testRoundIds = uniqueRounds.Skip(roundSplitIndex).ToHashSet();
-    
+
         var trainData = sortedData.Where(f => trainRoundIds.Contains(f.RoundId)).ToList();
         var testData = sortedData.Where(f => testRoundIds.Contains(f.RoundId)).ToList();
 
-        Console.WriteLine($"   Training: {trainData.Count} records (rounds {trainData.Min(f => f.RoundId)}-{trainData.Max(f => f.RoundId)})");
-        Console.WriteLine($"   Testing:  {testData.Count} records (rounds {testData.Min(f => f.RoundId)}-{testData.Max(f => f.RoundId)})");
-    
+        Console.WriteLine(
+            $"   Training: {trainData.Count} records (rounds {trainData.Min(f => f.RoundId)}-{trainData.Max(f => f.RoundId)})");
+        Console.WriteLine(
+            $"   Testing:  {testData.Count} records (rounds {testData.Min(f => f.RoundId)}-{testData.Max(f => f.RoundId)})");
+
         // Verify no overlap
         var trainMax = trainData.Max(f => f.RoundId);
         var testMin = testData.Min(f => f.RoundId);
-    
+
         if (trainMax >= testMin)
-        {
-            throw new InvalidOperationException($"Train/test overlap detected: train max={trainMax}, test min={testMin}");
-        }
-        
+            throw new InvalidOperationException(
+                $"Train/test overlap detected: train max={trainMax}, test min={testMin}");
+
         var mlTrainData = ConvertToMlFormat(trainData);
         var dataView = _mlContext.Data.LoadFromEnumerable(mlTrainData);
 
@@ -334,7 +339,7 @@ public class MlModelService : IMlModelService
     {
         Console.WriteLine("🤖 Training ML model (without detailed evaluation)...");
 
-        var trainingData = await _featureService.CreateTrainingDataAsync();
+        var trainingData = await _featureService.CreateTrainingDataAsync(int.MaxValue);
         var validData = trainingData.Where(f => f.IsWinner.HasValue).ToList();
 
         Console.WriteLine($"Training with {validData.Count} records");
@@ -370,35 +375,139 @@ public class MlModelService : IMlModelService
         Console.WriteLine($"✅ Model trained - Accuracy: {metrics.Accuracy:P2}, AUC: {metrics.AreaUnderRocCurve:F3}");
     }
 
+    #endregion
+
+  #region Prediction Methods
+
+  /// <summary>
+  /// Predict for a specific round (loads features from database and enriches with names)
+  /// </summary>
+  public async Task<List<PiratePrediction>> PredictRoundAsync(int roundId)
+  {
+      if (_model == null)
+          throw new InvalidOperationException("Model must be trained first");
+
+      // Check cache first
+      if (_predictionCache.TryGetValue(roundId, out var cachedPredictions))
+          return cachedPredictions;
+
+      // Get features for the round (returns PirateFeatureRecord)
+      var featureRecords = await _featureService.CreateFeaturesForRoundAsync(roundId);
+
+      if (!featureRecords.Any())
+          return new List<PiratePrediction>();
+
+      // Use the PirateFeatureRecord overload
+      var predictions = await PredictAsync(featureRecords, false);
+
+      // Cache the predictions
+      _predictionCache[roundId] = predictions;
+
+      return predictions;
+  }
+
+    /// <summary>
+    /// Predict from pre-loaded PirateFeatureRecord (for backtesting/evaluation)
+    /// </summary>
     public async Task<List<PiratePrediction>> PredictAsync(List<PirateFeatureRecord> features, bool useCache = true)
     {
         if (_model == null)
             throw new InvalidOperationException("Model must be trained first");
 
-        // Check cache first to see if we have predictions for this round but only if 
-        if (features.Any() && _predictionCache.TryGetValue(features[0].RoundId, out var cachedPredictions) && useCache)
+        if (!features.Any())
+            return new List<PiratePrediction>();
+
+        // Check cache first
+        var roundId = features[0].RoundId;
+        if (useCache && _predictionCache.TryGetValue(roundId, out var cachedPredictions))
             return cachedPredictions;
+
+        // Ensure pirate names are cached
+        await EnsurePirateNamesCachedAsync();
 
         var mlData = ConvertToMlFormat(features);
         var dataView = _mlContext.Data.LoadFromEnumerable(mlData);
         var predictions = _model.Transform(dataView);
 
-        var predictionResults = _mlContext.Data.CreateEnumerable<PiratePredictionOutput>(predictions, false).ToList();
+        var predictionResults = _mlContext.Data
+            .CreateEnumerable<PiratePredictionOutput>(predictions, false)
+            .ToList();
 
         var piratePredictions = predictionResults.Zip(features, (pred, feat) => new PiratePrediction
         {
             RoundId = feat.RoundId,
             ArenaId = feat.ArenaId,
+            ArenaName = ArenaConstants.GetArenaName(feat.ArenaId),
             PirateId = feat.PirateId,
+            PirateName = GetPirateName(feat.PirateId),
             WinProbability = Math.Clamp(pred.Probability, 0.01f, 0.99f),
-            Payout = Math.Max(2, feat.CurrentOdds)
+            Payout = Math.Max(2, (int)feat.CurrentOdds)
         }).ToList();
 
         // Cache the predictions
-        if (features.Any()) _predictionCache[features[0].RoundId] = piratePredictions;
+        if (useCache)
+            _predictionCache[roundId] = piratePredictions;
 
         return piratePredictions;
     }
+
+    /// <summary>
+    /// Predict from pre-loaded MlPirateFeature (for strategy comparison)
+    /// </summary>
+    /// <summary>
+    /// Predict from pre-loaded MlPirateFeature (for strategy comparison)
+    /// </summary>
+    public async Task<List<PiratePrediction>> PredictAsync(List<MlPirateFeature> features, bool useCache = true)
+    {
+        if (_model == null)
+            throw new InvalidOperationException("Model must be trained first");
+
+        if (!features.Any())
+            return new List<PiratePrediction>();
+
+        // Get RoundId from first feature for caching
+        var roundId = features.First().RoundId;
+
+        if (useCache && roundId > 0 && _predictionCache.TryGetValue(roundId, out var cachedPredictions))
+            return cachedPredictions;
+
+        // Ensure pirate names are cached
+        await EnsurePirateNamesCachedAsync();
+
+        var dataView = _mlContext.Data.LoadFromEnumerable(features);
+        var predictions = _model.Transform(dataView);
+
+        var predictionResults = _mlContext.Data
+            .CreateEnumerable<PiratePredictionOutput>(predictions, false)
+            .ToList();
+
+        var piratePredictions = predictionResults.Zip(features, (pred, feat) => new PiratePrediction
+        {
+            RoundId = feat.RoundId,
+            ArenaId = feat.ArenaId,
+            ArenaName = ArenaConstants.GetArenaName(feat.ArenaId),
+            PirateId = feat.PirateId,
+            PirateName = GetPirateName(feat.PirateId),
+            WinProbability = Math.Clamp(pred.Probability, 0.01f, 0.99f),
+            Payout = Math.Max(2, (int)feat.CurrentOdds)
+        }).ToList();
+
+        // Cache the predictions if we have a valid round ID
+        if (useCache && roundId > 0)
+            _predictionCache[roundId] = piratePredictions;
+
+        return piratePredictions;
+    }
+
+    public void ClearPredictionCache()
+    {
+        _predictionCache.Clear();
+    }
+
+    #endregion
+    
+
+    #region Model Persistence
 
     public void SaveModel(string path)
     {
@@ -416,107 +525,178 @@ public class MlModelService : IMlModelService
         Console.WriteLine($"📂 Model loaded from {path}");
     }
 
-   private FeatureSelectionResult SelectFeaturesBasedOnCausalAnalysis(ComprehensiveCausalReport causalReport)
-{
-    var result = new FeatureSelectionResult();
-    var featureEffects = new Dictionary<string, double>();
+    #endregion
 
-    // Food adjustment
-    if (causalReport.FoodAdjustmentEffect.IsSignificant)
-    {
-        result.SelectedFeatures.Add(nameof(MlPirateFeature.FoodAdjustment));
-        featureEffects[nameof(MlPirateFeature.FoodAdjustment)] =
-            causalReport.FoodAdjustmentEffect.AverageTreatmentEffect;
-    }
-    else
-    {
-        result.ExcludedFeatures.Add(nameof(MlPirateFeature.FoodAdjustment));
-    }
+    #region Helper Methods
 
-    // ✅ FIX: Check new seat position joint test property
-    if (causalReport.OverallSeatPositionJointTest?.IsSignificant == true)
+    private async Task EnsurePirateNamesCachedAsync()
     {
-        result.SelectedFeatures.Add(nameof(MlPirateFeature.Position));
-        
-        // Use the strongest individual position effect as the feature effect
-        if (causalReport.EachSeatVsOthersEffects.Any())
+        if (_pirateNamesCache == null)
         {
-            var strongestEffect = causalReport.EachSeatVsOthersEffects.Values
-                .OrderByDescending(e => Math.Abs(e.AverageTreatmentEffect))
-                .First();
-            featureEffects[nameof(MlPirateFeature.Position)] = strongestEffect.AverageTreatmentEffect;
+            _pirateNamesCache = await _context.Pirates
+                .AsNoTracking()
+                .ToDictionaryAsync(p => p.Id, p => p.PirateName ?? $"Pirate #{p.Id}");
+        }
+    }
+
+    private string GetPirateName(int pirateId)
+    {
+        if (_pirateNamesCache != null && _pirateNamesCache.TryGetValue(pirateId, out var name))
+        {
+            return name;
+        }
+        return $"Pirate #{pirateId}";
+    }
+
+    private List<MlPirateFeature> ConvertToMlFormat(List<PirateFeatureRecord> features)
+    {
+        return features.Select(f => new MlPirateFeature
+        {
+            RoundId = f.RoundId,  // Include RoundId
+            PirateId = f.PirateId,
+            Position = f.Position,
+            ArenaId = f.ArenaId,
+            CurrentOdds = Math.Max(2, f.CurrentOdds),
+            FoodAdjustment = f.FoodAdjustment,
+            Strength = f.Strength,
+            Weight = f.Weight,
+            HistoricalWinRate = (float)f.HistoricalWinRate,
+            TotalAppearances = f.TotalAppearances,
+            ArenaWinRate = (float)f.ArenaWinRate,
+            RecentWinRate = (float)f.RecentWinRate,
+            WinRateVsCurrentRivals = (float)f.WinRateVsCurrentRivals,
+            MatchesVsCurrentRivals = f.MatchesVsCurrentRivals,
+            AvgRivalStrength = (float)f.AvgRivalStrength,
+            Won = f.IsWinner ?? false
+        }).ToList();
+    }
+
+    private List<MlPirateFeature> ConvertMlFeaturesToMlFormat(List<MlPirateFeature> features)
+    {
+        // MlPirateFeature from FeatureEngineeringService may need normalization
+        return features.Select(f => new MlPirateFeature
+        {
+            Position = f.Position,
+            ArenaId = f.ArenaId,
+            PirateId = f.PirateId,
+            CurrentOdds = Math.Max(2, f.CurrentOdds),
+            FoodAdjustment = f.FoodAdjustment,
+            Strength = f.Strength,
+            Weight = f.Weight,
+            HistoricalWinRate = f.HistoricalWinRate,
+            TotalAppearances = f.TotalAppearances,
+            ArenaWinRate = f.ArenaWinRate,
+            RecentWinRate = f.RecentWinRate,
+            WinRateVsCurrentRivals = f.WinRateVsCurrentRivals,
+            MatchesVsCurrentRivals = f.MatchesVsCurrentRivals,
+            AvgRivalStrength = f.AvgRivalStrength,
+            Won = f.Won
+        }).ToList();
+    }
+
+    #endregion
+
+    #region Causal Analysis Helpers
+
+    private FeatureSelectionResult SelectFeaturesBasedOnCausalAnalysis(ComprehensiveCausalReport causalReport)
+    {
+        var result = new FeatureSelectionResult();
+        var featureEffects = new Dictionary<string, double>();
+
+        // Food adjustment
+        if (causalReport.FoodAdjustmentEffect.IsSignificant)
+        {
+            result.SelectedFeatures.Add(nameof(MlPirateFeature.FoodAdjustment));
+            featureEffects[nameof(MlPirateFeature.FoodAdjustment)] =
+                causalReport.FoodAdjustmentEffect.AverageTreatmentEffect;
         }
         else
         {
-            featureEffects[nameof(MlPirateFeature.Position)] = causalReport.OverallSeatPositionJointTest.AverageTreatmentEffect;
+            result.ExcludedFeatures.Add(nameof(MlPirateFeature.FoodAdjustment));
         }
-    }
-    else
-    {
-        result.ExcludedFeatures.Add(nameof(MlPirateFeature.Position));
-    }
 
-    // ✅ NEW: Add ArenaId as a feature if arena matters
-    if (causalReport.OverallArenaJointTest?.IsSignificant == true)
-    {
-        // Note: ArenaId needs to be added to MlPirateFeature if not already there
-        // For now, we can use it as a categorical indicator
-        result.SelectedFeatures.Add("ArenaId"); // Or create arena dummy variables
-        
-        if (causalReport.IndividualArenaEffects.Any())
+        // Seat position
+        if (causalReport.OverallSeatPositionJointTest?.IsSignificant == true)
         {
-            var strongestArenaEffect = causalReport.IndividualArenaEffects.Values
-                .OrderByDescending(e => Math.Abs(e.AverageTreatmentEffect))
-                .First();
-            featureEffects["ArenaId"] = strongestArenaEffect.AverageTreatmentEffect;
+            result.SelectedFeatures.Add(nameof(MlPirateFeature.Position));
+
+            if (causalReport.EachSeatVsOthersEffects.Any())
+            {
+                var strongestEffect = causalReport.EachSeatVsOthersEffects.Values
+                    .OrderByDescending(e => Math.Abs(e.AverageTreatmentEffect))
+                    .First();
+                featureEffects[nameof(MlPirateFeature.Position)] = strongestEffect.AverageTreatmentEffect;
+            }
+            else
+            {
+                featureEffects[nameof(MlPirateFeature.Position)] =
+                    causalReport.OverallSeatPositionJointTest.AverageTreatmentEffect;
+            }
         }
         else
         {
-            featureEffects["ArenaId"] = causalReport.OverallArenaJointTest.AverageTreatmentEffect;
+            result.ExcludedFeatures.Add(nameof(MlPirateFeature.Position));
         }
-    }
 
-    // Rival strength
-    if (causalReport.RivalStrengthEffect.IsSignificant)
-    {
-        result.SelectedFeatures.Add(nameof(MlPirateFeature.AvgRivalStrength));
-        result.SelectedFeatures.Add(nameof(MlPirateFeature.WinRateVsCurrentRivals));
-        featureEffects[nameof(MlPirateFeature.AvgRivalStrength)] =
-            causalReport.RivalStrengthEffect.AverageTreatmentEffect;
-    }
-    else
-    {
-        result.ExcludedFeatures.Add(nameof(MlPirateFeature.AvgRivalStrength));
-        result.ExcludedFeatures.Add(nameof(MlPirateFeature.WinRateVsCurrentRivals));
-    }
+        // Arena effects
+        if (causalReport.OverallArenaJointTest?.IsSignificant == true)
+        {
+            result.SelectedFeatures.Add("ArenaId");
 
-    // Odds effect
-    if (causalReport.OddsEffect.IsSignificant)
-    {
-        result.SelectedFeatures.Add(nameof(MlPirateFeature.CurrentOdds));
-        featureEffects[nameof(MlPirateFeature.CurrentOdds)] = causalReport.OddsEffect.AverageTreatmentEffect;
+            if (causalReport.IndividualArenaEffects.Any())
+            {
+                var strongestArenaEffect = causalReport.IndividualArenaEffects.Values
+                    .OrderByDescending(e => Math.Abs(e.AverageTreatmentEffect))
+                    .First();
+                featureEffects["ArenaId"] = strongestArenaEffect.AverageTreatmentEffect;
+            }
+            else
+            {
+                featureEffects["ArenaId"] = causalReport.OverallArenaJointTest.AverageTreatmentEffect;
+            }
+        }
+
+        // Rival strength
+        if (causalReport.RivalStrengthEffect.IsSignificant)
+        {
+            result.SelectedFeatures.Add(nameof(MlPirateFeature.AvgRivalStrength));
+            result.SelectedFeatures.Add(nameof(MlPirateFeature.WinRateVsCurrentRivals));
+            featureEffects[nameof(MlPirateFeature.AvgRivalStrength)] =
+                causalReport.RivalStrengthEffect.AverageTreatmentEffect;
+        }
+        else
+        {
+            result.ExcludedFeatures.Add(nameof(MlPirateFeature.AvgRivalStrength));
+            result.ExcludedFeatures.Add(nameof(MlPirateFeature.WinRateVsCurrentRivals));
+        }
+
+        // Odds effect
+        if (causalReport.OddsEffect.IsSignificant)
+        {
+            result.SelectedFeatures.Add(nameof(MlPirateFeature.CurrentOdds));
+            featureEffects[nameof(MlPirateFeature.CurrentOdds)] = causalReport.OddsEffect.AverageTreatmentEffect;
+        }
+        else
+        {
+            result.ExcludedFeatures.Add(nameof(MlPirateFeature.CurrentOdds));
+        }
+
+        // Always include proven predictors
+        result.SelectedFeatures.Add(nameof(MlPirateFeature.HistoricalWinRate));
+        result.SelectedFeatures.Add(nameof(MlPirateFeature.ArenaWinRate));
+        result.SelectedFeatures.Add(nameof(MlPirateFeature.RecentWinRate));
+
+        // Include pirate attributes if any causal effects exist
+        if (featureEffects.Values.Any(v => Math.Abs(v) > 0.01))
+        {
+            result.SelectedFeatures.Add(nameof(MlPirateFeature.Strength));
+            result.SelectedFeatures.Add(nameof(MlPirateFeature.Weight));
+        }
+
+        result.FeatureEffects = featureEffects;
+
+        return result;
     }
-    else
-    {
-        result.ExcludedFeatures.Add(nameof(MlPirateFeature.CurrentOdds));
-    }
-
-    // Always include proven predictors (may not be causal but are predictive)
-    result.SelectedFeatures.Add(nameof(MlPirateFeature.HistoricalWinRate));
-    result.SelectedFeatures.Add(nameof(MlPirateFeature.ArenaWinRate));
-    result.SelectedFeatures.Add(nameof(MlPirateFeature.RecentWinRate));
-
-    // Include pirate attributes if any causal effects exist
-    if (featureEffects.Values.Any(v => Math.Abs(v) > 0.01))
-    {
-        result.SelectedFeatures.Add(nameof(MlPirateFeature.Strength));
-        result.SelectedFeatures.Add(nameof(MlPirateFeature.Weight));
-    }
-
-    result.FeatureEffects = featureEffects;
-
-    return result;
-}
 
     private async Task<ITransformer> TrainStandardModelForComparison(List<PirateFeatureRecord> trainData)
     {
@@ -565,7 +745,6 @@ public class MlModelService : IMlModelService
             recommendations.Add("Use food adjustment cautiously - may be confounded with other factors");
         }
 
-
         // Rival strength insights
         if (causalReport.RivalStrengthEffect.IsSignificant &&
             causalReport.RivalStrengthEffect.AverageTreatmentEffect < -0.03)
@@ -578,7 +757,8 @@ public class MlModelService : IMlModelService
         // Odds insights
         if (causalReport.OddsEffect.IsSignificant)
         {
-            findings.Add($"Favorite status has causal effect ({causalReport.OddsEffect.AverageTreatmentEffect:+0.00%;-0.00%;0.00%})");
+            findings.Add(
+                $"Favorite status has causal effect ({causalReport.OddsEffect.AverageTreatmentEffect:+0.00%;-0.00%;0.00%})");
 
             if (causalReport.OddsEffect.DoseResponse != null)
             {
@@ -614,7 +794,8 @@ public class MlModelService : IMlModelService
         }
 
         // Model performance insights
-        if (evalReport.AUC > 0.75) findings.Add($"Causal model achieves strong performance (AUC: {evalReport.AUC:F3})");
+        if (evalReport.AUC > 0.75) 
+            findings.Add($"Causal model achieves strong performance (AUC: {evalReport.AUC:F3})");
 
         if (evalReport.CalibrationMetrics.OverallCalibrationError < 0.10)
             findings.Add("Model probabilities are well-calibrated for betting decisions");
@@ -625,11 +806,17 @@ public class MlModelService : IMlModelService
         causalReport.Recommendations = recommendations;
 
         Console.WriteLine("\n📋 KEY FINDINGS:");
-        foreach (var finding in findings) Console.WriteLine($"   • {finding}");
+        foreach (var finding in findings) 
+            Console.WriteLine($"   • {finding}");
 
         Console.WriteLine("\n💡 RECOMMENDATIONS:");
-        foreach (var rec in recommendations) Console.WriteLine($"   → {rec}");
+        foreach (var rec in recommendations) 
+            Console.WriteLine($"   → {rec}");
     }
+
+    #endregion
+
+    #region Report Saving
 
     private void SaveComprehensiveCausalReport(
         ComprehensiveCausalReport causalReport,
@@ -678,7 +865,6 @@ public class MlModelService : IMlModelService
 
     private string DetermineRecommendedOptimization(ComprehensiveCausalReport causalReport)
     {
-        // Based on causal analysis, recommend optimization method
         if (causalReport.FoodAdjustmentEffect.IsSignificant &&
             causalReport.InteractionEffects.Any(ie => ie.Value.IsSynergistic))
             return "ConsistencyWeighted - Multiple causal factors suggest focusing on reliable combinations";
@@ -723,29 +909,15 @@ public class MlModelService : IMlModelService
         Console.WriteLine($"📄 Cross-validation report saved to {fileName}");
     }
 
-    public void ClearPredictionCache()
-    {
-        _predictionCache.Clear();
-    }
+    #endregion
+}
 
-    private List<MlPirateFeature> ConvertToMlFormat(List<PirateFeatureRecord> features)
-    {
-        return features.Select(f => new MlPirateFeature
-        {
-            Position = f.Position,
-            ArenaId = f.ArenaId,  // ✅ Add this
-            CurrentOdds = Math.Max(2, f.CurrentOdds),
-            FoodAdjustment = f.FoodAdjustment,
-            Strength = f.Strength,
-            Weight = f.Weight,
-            HistoricalWinRate = (float)f.HistoricalWinRate,
-            TotalAppearances = f.TotalAppearances,
-            ArenaWinRate = (float)f.ArenaWinRate,
-            RecentWinRate = (float)f.RecentWinRate,
-            WinRateVsCurrentRivals = (float)f.WinRateVsCurrentRivals,
-            MatchesVsCurrentRivals = f.MatchesVsCurrentRivals,
-            AvgRivalStrength = (float)f.AvgRivalStrength,
-            Won = f.IsWinner ?? false
-        }).ToList();
-    }
+/// <summary>
+/// ML.NET prediction output
+/// </summary>
+public class PiratePredictionOutput
+{
+    public bool PredictedLabel { get; set; }
+    public float Probability { get; set; }
+    public float Score { get; set; }
 }

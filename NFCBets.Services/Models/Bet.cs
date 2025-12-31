@@ -2,7 +2,6 @@ using NFCBets.Classical.Models;
 
 namespace NFCBets.Services.Models;
 
-// Add ArenasCovered property to Bet class
 public class Bet
 {
     public List<PiratePrediction> Pirates { get; set; } = new();
@@ -20,12 +19,29 @@ public class Bet
     {
         var pirateDetails = Pirates
             .OrderBy(p => p.ArenaId)
-            .Select(p => $"Arena{p.ArenaId}:Pirate{p.PirateId}({CorrectOdds(p.Payout)}:1)");
+            .Select(p =>
+            {
+                var arena = !string.IsNullOrEmpty(p.ArenaName) ? p.ArenaName : $"Arena{p.ArenaId}";
+                var pirate = !string.IsNullOrEmpty(p.PirateName) ? p.PirateName : $"Pirate{p.PirateId}";
+                return $"{arena}: {pirate} ({CorrectOdds(p.Payout)}:1)";
+            });
 
         var betString = string.Join(" + ", pirateDetails);
 
         return $"[{betString}] → {TotalPayout}:1 payout, " +
                $"{CombinedWinProbability:P2} win chance, " +
                $"EV: {ExpectedValue:+0.00;-0.00;0.00}";
+    }
+
+    /// <summary>
+    /// Short display format for summaries
+    /// </summary>
+    public string ToShortString()
+    {
+        var pirates = string.Join(" + ", Pirates
+            .OrderBy(p => p.ArenaId)
+            .Select(p => !string.IsNullOrEmpty(p.PirateName) ? p.PirateName : $"P{p.PirateId}"));
+
+        return $"[{pirates}] {TotalPayout}:1 @ {CombinedWinProbability:P0}";
     }
 }

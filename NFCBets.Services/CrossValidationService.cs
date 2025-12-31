@@ -1,8 +1,8 @@
 using Microsoft.ML;
-using NFCBets.Classical.Models;
 using NFCBets.Services.Interfaces;
 using NFCBets.Services.Models;
 using NFCBets.Utilities;
+using NFCBets.Utilities.Models;
 
 namespace NFCBets.Services;
 
@@ -21,7 +21,7 @@ public class CrossValidationService : ICrossValidationService
     {
         Console.WriteLine($"🔄 Performing {k}-Fold Cross-Validation...");
 
-        var allData = await _featureService.CreateTrainingDataAsync();
+        var allData = await _featureService.CreateTrainingDataAsync(int.MaxValue);
         var validData = allData.Where(f => f.IsWinner.HasValue).OrderBy(f => f.RoundId).ToList();
 
         Console.WriteLine($"   Total data: {validData.Count} records");
@@ -70,7 +70,7 @@ public class CrossValidationService : ICrossValidationService
     {
         Console.WriteLine($"📅 Performing Time-Series Cross-Validation ({numFolds} folds)...");
 
-        var allData = await _featureService.CreateTrainingDataAsync();
+        var allData = await _featureService.CreateTrainingDataAsync(int.MaxValue);
         var validData = allData.Where(f => f.IsWinner.HasValue).OrderBy(f => f.RoundId).ToList();
 
         Console.WriteLine($"   Total data: {validData.Count} records");
@@ -174,7 +174,7 @@ public class CrossValidationService : ICrossValidationService
         return features.Select(f => new MlPirateFeature
         {
             Position = f.Position,
-            ArenaId = f.ArenaId,  // ✅ Add this
+            ArenaId = f.ArenaId, // ✅ Add this
             CurrentOdds = Math.Max(2, f.CurrentOdds),
             FoodAdjustment = f.FoodAdjustment,
             Strength = f.Strength,

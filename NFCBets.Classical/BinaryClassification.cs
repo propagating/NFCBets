@@ -1,17 +1,15 @@
 using Microsoft.ML;
 using NFCBets.Classical.Interfaces;
 using NFCBets.Classical.Models;
+using NFCBets.Utilities;
+using NFCBets.Utilities.Models;
 
 namespace NFCBets.Classical;
 
-/// <summary>
-/// Current approach: Binary classification (win/loss) for each pirate independently
-/// </summary>
 public class BinaryClassification : IMlStrategy
 {
-    public string StrategyName => "Binary Classification (Current)";
-    
     private readonly MLContext _mlContext;
+    private InteractionAnalysisReport? _interactionReport;
     private ITransformer? _model;
 
     public BinaryClassification()
@@ -19,14 +17,24 @@ public class BinaryClassification : IMlStrategy
         _mlContext = new MLContext(42);
     }
 
-    public async Task TrainAsync(List<PirateFeatureRecord> trainingData)
+    public string StrategyName => "Binary Classification (LightGBM)";
+
+    public async Task TrainAsync(List<PirateFeatureRecord> trainingData,
+        InteractionAnalysisReport interactionReport = null)
     {
+        _interactionReport = interactionReport;
+
         Console.WriteLine($"   Training {StrategyName} with {trainingData.Count} records...");
+
+        if (_interactionReport != null)
+            Console.WriteLine(
+                $"      Applying {_interactionReport.AntagonisticInteractions.Count} antagonistic + {_interactionReport.SynergisticInteractions.Count} synergistic interaction controls");
 
         var mlData = ConvertToMlFormat(trainingData);
         var dataView = _mlContext.Data.LoadFromEnumerable(mlData);
 
         var pipeline = _mlContext.Transforms.Concatenate("Features",
+                // Base features
                 nameof(MlPirateFeature.Position),
                 nameof(MlPirateFeature.CurrentOdds),
                 nameof(MlPirateFeature.FoodAdjustment),
@@ -36,19 +44,33 @@ public class BinaryClassification : IMlStrategy
                 nameof(MlPirateFeature.ArenaWinRate),
                 nameof(MlPirateFeature.RecentWinRate),
                 nameof(MlPirateFeature.WinRateVsCurrentRivals),
-                nameof(MlPirateFeature.AvgRivalStrength))
+                nameof(MlPirateFeature.AvgRivalStrength),
+                // Antagonistic penalties
+                nameof(MlPirateFeature.Penalty_FoodPosition),
+                nameof(MlPirateFeature.Penalty_FoodFavorite),
+                nameof(MlPirateFeature.Penalty_StrengthPosition),
+                nameof(MlPirateFeature.Penalty_StrengthWeakRivals),
+                nameof(MlPirateFeature.Penalty_FavoriteInexperienced),
+                nameof(MlPirateFeature.Penalty_LowStrengthFavorite),
+                // Synergistic bonuses
+                nameof(MlPirateFeature.Bonus_UndervaluedStrong),
+                nameof(MlPirateFeature.Bonus_ArenaSpecialistModerateOdds),
+                nameof(MlPirateFeature.Bonus_HotStreakBeatsRivals),
+                nameof(MlPirateFeature.Bonus_FoodPosition3),
+                // Three-way interactions
+                nameof(MlPirateFeature.ThreeWay_FoodPositionStrength),
+                nameof(MlPirateFeature.ThreeWay_UndervaluedStrongBeatsRivals))
             .Append(_mlContext.Transforms.NormalizeMinMax("Features"))
             .Append(_mlContext.BinaryClassification.Trainers.LightGbm(
                 nameof(MlPirateFeature.Won),
-                "Features",
-                numberOfLeaves: 20,
-                minimumExampleCountPerLeaf: 50,
-                learningRate: 0.05,
-                numberOfIterations: 50));
+                numberOfLeaves: 31,
+                minimumExampleCountPerLeaf: 20,
+                learningRate: 0.1,
+                numberOfIterations: 100));
 
         _model = pipeline.Fit(dataView);
-        
-        Console.WriteLine($"   ✅ Binary classification model trained");
+
+        Console.WriteLine($"   ✅ {StrategyName} trained");
     }
 
     public async Task<List<PiratePrediction>> PredictAsync(List<PirateFeatureRecord> features)
@@ -111,21 +133,29 @@ public class BinaryClassification : IMlStrategy
 
     private List<MlPirateFeature> ConvertToMlFormat(List<PirateFeatureRecord> features)
     {
-        return features.Select(f => new MlPirateFeature
+        return features.Select(f =>
         {
-            Position = f.Position,
-            CurrentOdds = Math.Max(2, f.CurrentOdds),
-            FoodAdjustment = f.FoodAdjustment,
-            Strength = f.Strength,
-            Weight = f.Weight,
-            HistoricalWinRate = (float)f.HistoricalWinRate,
-            TotalAppearances = f.TotalAppearances,
-            ArenaWinRate = (float)f.ArenaWinRate,
-            RecentWinRate = (float)f.RecentWinRate,
-            WinRateVsCurrentRivals = (float)f.WinRateVsCurrentRivals,
-            MatchesVsCurrentRivals = f.MatchesVsCurrentRivals,
-            AvgRivalStrength = (float)f.AvgRivalStrength,
-            Won = f.IsWinner ?? false
+            var mlFeature = new MlPirateFeature
+            {
+                Position = f.Position,
+                CurrentOdds = Math.Max(2, f.CurrentOdds),
+                FoodAdjustment = f.FoodAdjustment,
+                Strength = f.Strength,
+                Weight = f.Weight,
+                HistoricalWinRate = (float)f.HistoricalWinRate,
+                TotalAppearances = f.TotalAppearances,
+                ArenaWinRate = (float)f.ArenaWinRate,
+                RecentWinRate = (float)f.RecentWinRate,
+                WinRateVsCurrentRivals = (float)f.WinRateVsCurrentRivals,
+                MatchesVsCurrentRivals = f.MatchesVsCurrentRivals,
+                AvgRivalStrength = (float)f.AvgRivalStrength,
+                Won = f.IsWinner ?? false
+            };
+
+            // Apply interaction features
+            InteractionCalculator.ApplyInteractionFeatures(mlFeature, f, _interactionReport);
+
+            return mlFeature;
         }).ToList();
     }
 }

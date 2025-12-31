@@ -14,7 +14,6 @@ public class MultiClassFeature
     public float HistoricalWinRate { get; set; }
     public float ArenaWinRate { get; set; }
     public float RecentWinRate { get; set; }
-    
-    [ColumnName("Label")]
-    public int WinnerPirateId { get; set; } // Which pirate won
+
+    [ColumnName("Label")] public int WinnerPirateId { get; set; } // ✅ This is actually winner POSITION (0-3)
 }

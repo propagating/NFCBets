@@ -10,4 +10,8 @@
         <ProjectReference Include="..\NFCBets.EF\NFCBets.EF.csproj"/>
     </ItemGroup>
 
+    <ItemGroup>
+      <PackageReference Include="Microsoft.ML" Version="5.0.0" />
+    </ItemGroup>
+
 </Project>

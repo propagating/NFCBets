@@ -36,6 +36,26 @@ public static class MathUtilities
         return sorted[index];
     }
 
+    public static double CalculateAuc(List<(bool Actual, float Predicted)> predictions)
+    {
+        var sorted = predictions.OrderByDescending(p => p.Predicted).ToList();
+        var positives = predictions.Count(p => p.Actual);
+        var negatives = predictions.Count - positives;
+
+        if (positives == 0 || negatives == 0) return 0.5;
+
+        double auc = 0;
+        var truePositives = 0;
+
+        foreach (var (actual, _) in sorted)
+            if (actual)
+                truePositives++;
+            else
+                auc += truePositives;
+
+        return auc / (positives * negatives);
+    }
+
 
     public static double CalculateConsistencyScore(List<BetSeriesResult> results, List<double> returns)
     {
@@ -179,4 +199,44 @@ public static class MathUtilities
         return sumProduct / Math.Sqrt(sumXSquared * sumYSquared);
     }
 
+    /// <summary>
+    ///     Calculates Log Loss (cross-entropy) for binary predictions
+    ///     Lower is better (0 is perfect, higher means worse calibration)
+    /// </summary>
+    public static double CalculateLogLoss(List<(bool Actual, float Predicted)> predictions)
+    {
+        if (!predictions.Any()) return double.MaxValue;
+
+        double logLoss = 0;
+        const double epsilon = 1e-15; // Prevent log(0)
+
+        foreach (var (actual, predicted) in predictions)
+        {
+            // Clamp prediction to avoid log(0)
+            var p = Math.Clamp(predicted, epsilon, 1 - epsilon);
+
+            if (actual)
+                logLoss -= Math.Log(p);
+            else
+                logLoss -= Math.Log(1 - p);
+        }
+
+        return logLoss / predictions.Count;
+    }
+
+    public static double[] Softmax(double[] utilities)
+    {
+        var max = utilities.Max();
+        var exps = utilities.Select(u => Math.Exp(u - max)).ToArray();
+        var sum = exps.Sum();
+        return exps.Select(e => e / sum).ToArray();
+    }
+
+    public static double DotProduct(double[] a, double[] b)
+    {
+        double sum = 0;
+        for (var i = 0; i < a.Length; i++) sum += a[i] * b[i];
+        return sum;
+    }
+    
 }

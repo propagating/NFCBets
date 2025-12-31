@@ -1,146 +1,243 @@
 using Microsoft.ML;
-using Microsoft.ML.Data;
 using NFCBets.Classical.Interfaces;
 using NFCBets.Classical.Models;
+using NFCBets.Utilities;
+using NFCBets.Utilities.Models;
 
 namespace NFCBets.Classical;
 
-
-/// <summary>
-/// Uses LightGBM ranking to rank pirates within each arena
-/// Optimizes for getting the winner in top position
-/// </summary>
 public class LearnToRank : IMlStrategy
 {
-    public string StrategyName => "Learn to Rank (LightGBM Ranker)";
-    
     private readonly MLContext _mlContext;
-    private readonly Dictionary<int, ITransformer> _arenaModels = new();
+    private InteractionAnalysisReport? _interactionReport;
+    private ITransformer? _model;
 
     public LearnToRank()
     {
         _mlContext = new MLContext(42);
     }
 
-    public async Task TrainAsync(List<PirateFeatureRecord> trainingData)
+    public string StrategyName => "Learn to Rank";
+
+    public async Task TrainAsync(List<PirateFeatureRecord> trainingData,
+        InteractionAnalysisReport interactionReport = null)
     {
-        Console.WriteLine($"🏋️ Training {StrategyName}...");
+        _interactionReport = interactionReport;
 
-        for (int arenaId = 1; arenaId <= 5; arenaId++)
-        {
-            var arenaData = trainingData.Where(f => f.ArenaId == arenaId).ToList();
-            
-            if (!arenaData.Any()) continue;
+        Console.WriteLine($"   Training {StrategyName}...");
 
-            Console.WriteLine($"   Training Arena {arenaId} ranker...");
+        if (_interactionReport != null) Console.WriteLine("      Applying interaction controls");
 
-            var rankingData = ConvertToRankingFormat(arenaData);
-            var dataView = _mlContext.Data.LoadFromEnumerable(rankingData);
+        var rankingData = ConvertToRankingFormat(trainingData);
 
-            // Ranking pipeline
-            var pipeline = _mlContext.Transforms.Concatenate("Features",
-                    nameof(RankingFeature.Position),
-                    nameof(RankingFeature.CurrentOdds),
-                    nameof(RankingFeature.FoodAdjustment),
-                    nameof(RankingFeature.Strength),
-                    nameof(RankingFeature.HistoricalWinRate),
-                    nameof(RankingFeature.ArenaWinRate))
-                .Append(_mlContext.Transforms.NormalizeMinMax("Features"))
-                .Append(_mlContext.Ranking.Trainers.LightGbm(
-                    labelColumnName: nameof(RankingFeature.Label),
-                    featureColumnName: "Features",
-                    rowGroupColumnName: nameof(RankingFeature.GroupId)));
+        Console.WriteLine($"      Created {rankingData.Count} ranking records");
 
-            _arenaModels[arenaId] = pipeline.Fit(dataView);
-        }
+        var dataView = _mlContext.Data.LoadFromEnumerable(rankingData);
+
+        var pipeline = _mlContext.Transforms.Concatenate("Features",
+                nameof(RankingFeature.Position),
+                nameof(RankingFeature.CurrentOdds),
+                nameof(RankingFeature.FoodAdjustment),
+                nameof(RankingFeature.Strength),
+                nameof(RankingFeature.HistoricalWinRate),
+                nameof(RankingFeature.ArenaWinRate),
+                nameof(RankingFeature.RecentWinRate),
+                nameof(RankingFeature.WinRateVsCurrentRivals),
+                nameof(RankingFeature.AvgRivalStrength),
+                nameof(RankingFeature.StrengthDiff),
+                nameof(RankingFeature.OddsRank),
+                nameof(RankingFeature.InteractionPenalty),
+                nameof(RankingFeature.InteractionBonus))
+            .Append(_mlContext.Transforms.NormalizeMinMax("Features"))
+            .Append(_mlContext.Ranking.Trainers.LightGbm(
+                nameof(RankingFeature.Label),
+                "Features",
+                nameof(RankingFeature.GroupId),
+                numberOfLeaves: 31,
+                minimumExampleCountPerLeaf: 20,
+                learningRate: 0.1,
+                numberOfIterations: 100));
+
+        _model = pipeline.Fit(dataView);
+
+        Console.WriteLine($"   ✅ {StrategyName} trained");
     }
 
     public async Task<List<PiratePrediction>> PredictAsync(List<PirateFeatureRecord> features)
     {
+        if (_model == null)
+            throw new InvalidOperationException("Model must be trained first");
+
         var predictions = new List<PiratePrediction>();
 
-        foreach (var arenaGroup in features.GroupBy(f => f.ArenaId))
+        foreach (var roundGroup in features.GroupBy(f => (f.RoundId, f.ArenaId)))
         {
-            var arenaId = arenaGroup.Key;
-            if (!_arenaModels.TryGetValue(arenaId, out var model))
-                continue;
+            var pirates = roundGroup.OrderBy(p => p.Position).ToList();
+            if (pirates.Count != 4) continue;
 
-            var pirates = arenaGroup.ToList();
             var rankingData = ConvertToRankingFormat(pirates);
             var dataView = _mlContext.Data.LoadFromEnumerable(rankingData);
-            var prediction = model.Transform(dataView);
-            
-            var scores = _mlContext.Data.CreateEnumerable<RankingPrediction>(prediction, false).ToList();
+            var prediction = _model.Transform(dataView);
 
-            // Convert ranking scores to probabilities using softmax
-            var rawScores = scores.Select(s => (double)s.Score).ToArray();
-            var probabilities = Softmax(rawScores);
+            var results = _mlContext.Data.CreateEnumerable<RankingPrediction>(prediction, false).ToList();
 
-            for (int i = 0; i < pirates.Count; i++)
-            {
+            // Convert ranking scores to probabilities via softmax
+            var scores = results.Select(r => (double)r.Score).ToArray();
+            var probs = Softmax(scores);
+
+            for (var i = 0; i < pirates.Count && i < probs.Length; i++)
                 predictions.Add(new PiratePrediction
                 {
                     RoundId = pirates[i].RoundId,
                     ArenaId = pirates[i].ArenaId,
                     PirateId = pirates[i].PirateId,
-                    WinProbability = (float)probabilities[i],
-                    Payout = pirates[i].CurrentOdds
+                    WinProbability = (float)probs[i],
+                    Payout = Math.Max(2, pirates[i].CurrentOdds)
                 });
-            }
         }
 
         return predictions;
     }
 
-    private double[] Softmax(double[] scores)
-    {
-        var max = scores.Max();
-        var exps = scores.Select(s => Math.Exp(s - max)).ToArray();
-        var sum = exps.Sum();
-        return exps.Select(e => e / sum).ToArray();
-    }
-
-    private List<RankingFeature> ConvertToRankingFormat(List<PirateFeatureRecord> features)
-    {
-        return features.Select(f => new RankingFeature
-        {
-            GroupId = (uint)f.RoundId, // Group by round
-            Label = f.IsWinner == true ? 1f : 0f, // Winner gets label 1
-            Position = f.Position,
-            CurrentOdds = Math.Max(2, f.CurrentOdds),
-            FoodAdjustment = f.FoodAdjustment,
-            Strength = f.Strength,
-            HistoricalWinRate = (float)f.HistoricalWinRate,
-            ArenaWinRate = (float)f.ArenaWinRate
-        }).ToList();
-    }
-
     public async Task<ModelEvaluationReport> EvaluateAsync(List<PirateFeatureRecord> testData)
     {
-        throw new NotImplementedException();
+        Console.WriteLine($"   Evaluating {StrategyName}...");
+
+        var predictions = await PredictAsync(testData);
+
+        var correctPredictions = 0;
+        var totalRounds = 0;
+        var allPredictions = new List<(bool Actual, float Predicted)>();
+
+        foreach (var roundGroup in testData.GroupBy(f => (f.RoundId, f.ArenaId)))
+        {
+            var actualWinner = roundGroup.FirstOrDefault(p => p.IsWinner == true);
+            if (actualWinner == null) continue;
+
+            var roundPredictions = predictions
+                .Where(p => p.RoundId == roundGroup.Key.RoundId && p.ArenaId == roundGroup.Key.ArenaId)
+                .ToList();
+
+            if (!roundPredictions.Any()) continue;
+
+            var predictedWinner = roundPredictions.OrderByDescending(p => p.WinProbability).First();
+
+            if (predictedWinner.PirateId == actualWinner.PirateId)
+                correctPredictions++;
+
+            foreach (var pred in roundPredictions)
+            {
+                var actual = pred.PirateId == actualWinner.PirateId;
+                allPredictions.Add((actual, pred.WinProbability));
+            }
+
+            totalRounds++;
+        }
+
+        var accuracy = totalRounds > 0 ? correctPredictions / (double)totalRounds : 0;
+        var auc = MathUtilities.CalculateAuc(allPredictions);
+        var logLoss = MathUtilities.CalculateLogLoss(allPredictions);
+
+        return new ModelEvaluationReport
+        {
+            Accuracy = accuracy,
+            AUC = auc,
+            F1Score = accuracy * 0.5,
+            TestDataSize = testData.Count,
+            LogLoss = logLoss
+        };
     }
 
     public void SaveModel(string path)
     {
-        for (int arenaId = 1; arenaId <= 5; arenaId++)
-        {
-            if (_arenaModels.TryGetValue(arenaId, out var model))
-            {
-                var arenaPath = path.Replace(".zip", $"_ranker_arena{arenaId}.zip");
-                _mlContext.Model.Save(model, null, arenaPath);
-            }
-        }
+        if (_model == null)
+            throw new InvalidOperationException("No model to save");
+
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        _mlContext.Model.Save(_model, null, path.Replace(".zip", "_ranking.zip"));
     }
 
     public void LoadModel(string path)
     {
-        for (int arenaId = 1; arenaId <= 5; arenaId++)
+        _model = _mlContext.Model.Load(path.Replace(".zip", "_ranking.zip"), out _);
+    }
+
+    private double[] Softmax(double[] scores)
+    {
+        if (scores == null || scores.Length == 0)
+            return new double[4] { 0.25, 0.25, 0.25, 0.25 };
+
+        var max = scores.Max();
+        var exps = scores.Select(s => Math.Exp(s - max)).ToArray();
+        var sum = exps.Sum();
+
+        if (sum == 0)
+            return new double[4] { 0.25, 0.25, 0.25, 0.25 };
+
+        return exps.Select(e => e / sum).ToArray();
+    }
+
+    private List<RankingFeature> ConvertToRankingFormat(List<PirateFeatureRecord> data)
+    {
+        var result = new List<RankingFeature>();
+
+        var roundGroups = data.GroupBy(f => (f.RoundId, f.ArenaId));
+
+        foreach (var round in roundGroups)
         {
-            var arenaPath = path.Replace(".zip", $"_ranker_arena{arenaId}.zip");
-            if (File.Exists(arenaPath))
+            var pirates = round.OrderBy(p => p.Position).ToList();
+            if (pirates.Count != 4) continue;
+
+            var groupId = round.Key.RoundId * 10 + round.Key.ArenaId;
+            var avgStrength = pirates.Average(p => p.Strength);
+
+            var oddsRanks = pirates
+                .Select((p, idx) => new { Index = idx, Odds = p.CurrentOdds })
+                .OrderBy(x => x.Odds)
+                .Select((x, rank) => new { x.Index, Rank = rank + 1 })
+                .OrderBy(x => x.Index)
+                .Select(x => (float)x.Rank)
+                .ToArray();
+
+            for (var i = 0; i < pirates.Count; i++)
             {
-                _arenaModels[arenaId] = _mlContext.Model.Load(arenaPath, out _);
+                var pirate = pirates[i];
+
+                // Calculate interaction features
+                var mlFeature = new MlPirateFeature();
+                InteractionCalculator.ApplyInteractionFeatures(mlFeature, pirate, _interactionReport);
+
+                var penalty = mlFeature.Penalty_FoodPosition + mlFeature.Penalty_FoodFavorite +
+                              mlFeature.Penalty_StrengthPosition + mlFeature.Penalty_StrengthWeakRivals +
+                              mlFeature.Penalty_FavoriteInexperienced + mlFeature.Penalty_LowStrengthFavorite;
+
+                var bonus = mlFeature.Bonus_UndervaluedStrong + mlFeature.Bonus_HotStreakBeatsRivals +
+                            mlFeature.Bonus_ArenaSpecialistModerateOdds + mlFeature.Bonus_FoodPosition3;
+
+                // Label: winner = 3, others = 0 (higher is better in ranking)
+                var label = pirate.IsWinner == true ? 3u : 0u;
+
+                result.Add(new RankingFeature
+                {
+                    GroupId = groupId,
+                    Label = label,
+                    Position = pirate.Position,
+                    CurrentOdds = (float)Math.Log(Math.Max(2, pirate.CurrentOdds)),
+                    FoodAdjustment = pirate.FoodAdjustment,
+                    Strength = pirate.Strength,
+                    HistoricalWinRate = (float)pirate.HistoricalWinRate,
+                    ArenaWinRate = (float)pirate.ArenaWinRate,
+                    RecentWinRate = (float)pirate.RecentWinRate,
+                    WinRateVsCurrentRivals = (float)pirate.WinRateVsCurrentRivals,
+                    AvgRivalStrength = (float)pirate.AvgRivalStrength,
+                    StrengthDiff = pirate.Strength - (float)avgStrength,
+                    OddsRank = oddsRanks[i],
+                    InteractionPenalty = penalty,
+                    InteractionBonus = bonus
+                });
             }
         }
+
+        return result;
     }
 }

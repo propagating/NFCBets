@@ -8,8 +8,8 @@ namespace NFCBets.Services;
 
 public class NaiveBettingStrategyService
 {
-    private readonly NaiveOddsBasedStrategy _oddsStrategy;
     private readonly IBettingStrategyService _bettingService;
+    private readonly NaiveOddsBasedStrategy _oddsStrategy;
 
     public NaiveBettingStrategyService(IBettingStrategyService bettingService)
     {

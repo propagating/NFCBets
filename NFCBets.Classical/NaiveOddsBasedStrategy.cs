@@ -32,15 +32,15 @@ public class NaiveOddsBasedStrategy
 
     private List<PirateProbability> ComputeArenaProbabilities(List<PirateOdds> pirates)
     {
-        int arenaId = pirates.First().ArenaId;
-        
+        var arenaId = pirates.First().ArenaId;
+
         // Initialize min, max, and standard probabilities
         var minProbs = new double[4];
         var maxProbs = new double[4];
         var stdProbs = new double[4];
 
         // Step 1: Compute initial min/max bounds from odds
-        for (int i = 0; i < pirates.Count; i++)
+        for (var i = 0; i < pirates.Count; i++)
         {
             var odds = pirates[i].Odds;
 
@@ -65,78 +65,66 @@ public class NaiveOddsBasedStrategy
         }
 
         // Step 2: Tighten bounds using sum-to-1 constraint
-        double totalMin = minProbs.Sum();
-        double totalMax = maxProbs.Sum();
+        var totalMin = minProbs.Sum();
+        var totalMax = maxProbs.Sum();
 
-        for (int i = 0; i < 4; i++)
+        for (var i = 0; i < 4; i++)
         {
             // New min: max(current_min, 1 - sum_of_other_maxs)
-            double newMin = Math.Max(minProbs[i], 1 + maxProbs[i] - totalMax);
-            
+            var newMin = Math.Max(minProbs[i], 1 + maxProbs[i] - totalMax);
+
             // New max: min(current_max, 1 - sum_of_other_mins)
-            double newMax = Math.Min(maxProbs[i], 1 + minProbs[i] - totalMin);
-            
+            var newMax = Math.Min(maxProbs[i], 1 + minProbs[i] - totalMin);
+
             minProbs[i] = newMin;
             maxProbs[i] = newMax;
 
             // Initial standard probability
             if (pirates[i].Odds == 13)
-            {
                 stdProbs[i] = 1.0 / 20.0; // Conservative for clamped longshots
-            }
             else
-            {
                 stdProbs[i] = (minProbs[i] + maxProbs[i]) / 2.0;
-            }
         }
 
         // Step 3: Iteratively adjust to sum to exactly 1
-        for (int targetOdds = 2; targetOdds <= 13; targetOdds++)
+        for (var targetOdds = 2; targetOdds <= 13; targetOdds++)
         {
-            double totalStd = stdProbs.Sum();
+            var totalStd = stdProbs.Sum();
             if (Math.Abs(totalStd - 1.0) < 0.0001)
                 break; // Already sums to 1
 
-            int countSmaller = pirates.Count(p => p.Odds <= targetOdds);
+            var countSmaller = pirates.Count(p => p.Odds <= targetOdds);
             if (countSmaller == 0)
                 continue;
 
             // Calculate adjustment needed
             double stdToMin = 0;
-            for (int i = 0; i < 4; i++)
-            {
+            for (var i = 0; i < 4; i++)
                 if (pirates[i].Odds <= targetOdds)
                     stdToMin += stdProbs[i] - minProbs[i];
-            }
 
-            double smallestRange = double.MaxValue;
-            for (int i = 0; i < 4; i++)
-            {
+            var smallestRange = double.MaxValue;
+            for (var i = 0; i < 4; i++)
                 if (pirates[i].Odds <= targetOdds)
                     smallestRange = Math.Min(smallestRange, maxProbs[i] - minProbs[i]);
-            }
 
             // Check if we can adjust to sum to 1
             if (totalStd - stdToMin <= 1.0 &&
                 stdToMin + 1.0 - totalStd <= smallestRange * countSmaller)
             {
-                double remainingGap = (stdToMin + 1.0 - totalStd) / countSmaller;
+                var remainingGap = (stdToMin + 1.0 - totalStd) / countSmaller;
 
-                for (int i = 0; i < 4; i++)
-                {
+                for (var i = 0; i < 4; i++)
                     if (pirates[i].Odds <= targetOdds)
-                    {
                         stdProbs[i] = minProbs[i] + remainingGap;
-                    }
-                }
+
                 break;
             }
         }
 
         // Return probabilities
         var probabilities = new List<PirateProbability>();
-        for (int i = 0; i < pirates.Count; i++)
-        {
+        for (var i = 0; i < pirates.Count; i++)
             probabilities.Add(new PirateProbability
             {
                 RoundId = pirates[i].RoundId,
@@ -146,7 +134,6 @@ public class NaiveOddsBasedStrategy
                 Odds = pirates[i].Odds,
                 Probability = stdProbs[i]
             });
-        }
 
         return probabilities;
     }

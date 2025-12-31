@@ -1,3 +1,4 @@
+using NFCBets.Classical.Constants;
 using NFCBets.EF.Models;
 using NFCBets.Services.Enums;
 using NFCBets.Services.Interfaces;
@@ -7,10 +8,10 @@ namespace NFCBets.Services;
 
 public class DailyBettingPipeline : IDailyBettingPipeline
 {
-    private readonly IBettingStrategyService _bettingService;
     private readonly NfcbetsContext _context;
     private readonly IFeatureEngineeringService _featureService;
     private readonly IMlModelService _mlService;
+    private readonly IBettingStrategyService _bettingService;
 
     public DailyBettingPipeline(
         IFeatureEngineeringService featureService,
@@ -24,7 +25,8 @@ public class DailyBettingPipeline : IDailyBettingPipeline
         _context = context;
     }
 
-    public async Task<DailyBettingRecommendations> GenerateRecommendationsAsync(int roundId,
+    public async Task<DailyBettingRecommendations> GenerateRecommendationsAsync(
+        int roundId,
         BetOptimizationMethodEnum method = BetOptimizationMethodEnum.ConsistencyWeighted)
     {
         Console.WriteLine($"🎯 Generating betting recommendations for Round {roundId}");
@@ -55,11 +57,14 @@ public class DailyBettingPipeline : IDailyBettingPipeline
         Console.WriteLine("   Features by arena:");
         var featuresByArena = todayFeatures.GroupBy(f => f.ArenaId).OrderBy(g => g.Key);
         foreach (var arenaGroup in featuresByArena)
-            Console.WriteLine($"      Arena {arenaGroup.Key}: {arenaGroup.Count()} pirates");
+        {
+            var arenaName = ArenaConstants.GetArenaName(arenaGroup.Key);
+            Console.WriteLine($"      {arenaName}: {arenaGroup.Count()} pirates");
+        }
 
-        // Step 2: Predict win probabilities
+        // Step 2: Predict win probabilities (now includes pirate names)
         Console.WriteLine("🔮 Step 2: Predicting win probabilities...");
-        var predictions = await _mlService.PredictAsync(todayFeatures);
+        var predictions = await _mlService.PredictRoundAsync(roundId);
         Console.WriteLine($"   Generated {predictions.Count} predictions");
 
         if (!predictions.Any())
@@ -74,26 +79,31 @@ public class DailyBettingPipeline : IDailyBettingPipeline
             };
         }
 
-        // Display prediction summary by arena
+        // Display prediction summary by arena (now with names!)
         Console.WriteLine("   Predictions by arena:");
         foreach (var arenaGroup in predictions.GroupBy(p => p.ArenaId).OrderBy(g => g.Key))
         {
-            Console.WriteLine($"      Arena {arenaGroup.Key}:");
+            var arenaName = arenaGroup.First().ArenaName;
+            Console.WriteLine($"      {arenaName}:");
             foreach (var pred in arenaGroup.OrderByDescending(p => p.WinProbability))
+            {
+                var evStr = pred.ExpectedValue >= 0 ? $"+{pred.ExpectedValue:F2}" : $"{pred.ExpectedValue:F2}";
                 Console.WriteLine(
-                    $"         Pirate {pred.PirateId}: {pred.WinProbability:P2} win chance, {pred.Payout}:1 odds, EV: {pred.WinProbability * pred.Payout - 1:+0.00;-0.00}");
+                    $"         {pred.PirateName}: {pred.WinProbability:P1} win chance, {pred.CorrectedPayout}:1 odds, EV: {evStr}");
+            }
         }
 
         // Step 3: Generate bet series
         Console.WriteLine("💰 Step 3: Generating betting strategies...");
         var betSeries = _bettingService.GenerateBetSeriesParallel(predictions, method);
 
-        // ✅ Diagnostic: Check if bet generation succeeded
+        // Diagnostic output
         Console.WriteLine($"   Generated {betSeries.Count} bet series");
         foreach (var series in betSeries)
         {
             Console.WriteLine($"      {series.Name}: {series.Bets.Count} bets");
-            if (!series.Bets.Any()) Console.WriteLine($"         ⚠️ No bets generated for {series.Name}!");
+            if (!series.Bets.Any()) 
+                Console.WriteLine($"         ⚠️ No bets generated for {series.Name}!");
         }
 
         var recommendations = new DailyBettingRecommendations

@@ -1,4 +1,4 @@
-namespace NFCBets.Classical.Models;
+namespace NFCBets.Utilities.Models;
 
 public class PirateFeatureRecord
 {

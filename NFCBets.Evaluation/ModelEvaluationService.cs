@@ -3,8 +3,8 @@ using Microsoft.ML;
 using NFCBets.Classical.Models;
 using NFCBets.EF.Models;
 using NFCBets.Evaluation.Interfaces;
-using NFCBets.Evaluation.Models;
 using NFCBets.Services.Models;
+using NFCBets.Utilities.Models;
 
 //TODO: Refactor this to be part of the Evaluation project without a cricular reference
 namespace NFCBets.Evaluation;
@@ -129,18 +129,16 @@ public class ModelEvaluationService : IModelEvaluationService
                 var actualHistoricalCount = await context.RoundResults
                     .Where(rr => rr.PirateId == feature.PirateId &&
                                  rr.RoundId.HasValue &&
-                                 rr.RoundId < roundId &&  // Only PAST rounds
+                                 rr.RoundId < roundId && // Only PAST rounds
                                  rr.IsComplete)
                     .CountAsync();
 
                 // Check if TotalAppearances exceeds what it should be
                 if (feature.TotalAppearances > actualHistoricalCount + 1)
-                {
                     leakageIssues.Add(
                         $"❌ CRITICAL: Round {roundId}, Pirate {feature.PirateId}: " +
                         $"TotalAppearances={feature.TotalAppearances} but actual historical count={actualHistoricalCount}");
-                }
-                
+
                 // ✅ Verify historical win rate calculation
                 if (actualHistoricalCount > 0)
                 {
@@ -151,19 +149,17 @@ public class ModelEvaluationService : IModelEvaluationService
                                      rr.IsComplete &&
                                      rr.IsWinner)
                         .CountAsync();
-                    
+
                     var expectedWinRate = actualHistoricalWins / (double)actualHistoricalCount;
                     var diff = Math.Abs(feature.HistoricalWinRate - expectedWinRate);
-                    
+
                     // Allow small floating point errors (0.001)
                     if (diff > 0.001 && actualHistoricalCount > 10)
-                    {
                         leakageIssues.Add(
                             $"❌ CRITICAL: Round {roundId}, Pirate {feature.PirateId}: " +
                             $"HistoricalWinRate={feature.HistoricalWinRate:F4} but should be {expectedWinRate:F4}");
-                    }
                 }
-                
+
                 // ✅ Check recent form uses only last N rounds BEFORE current
                 var recentRounds = await context.RoundResults
                     .Where(rr => rr.PirateId == feature.PirateId &&
@@ -173,18 +169,16 @@ public class ModelEvaluationService : IModelEvaluationService
                     .OrderByDescending(rr => rr.RoundId)
                     .Take(10)
                     .ToListAsync();
-                
+
                 if (recentRounds.Any())
                 {
                     var expectedRecentWinRate = recentRounds.Average(rr => rr.IsWinner ? 1.0 : 0.0);
                     var recentDiff = Math.Abs(feature.RecentWinRate - expectedRecentWinRate);
-                    
+
                     if (recentDiff > 0.001 && recentRounds.Count >= 5)
-                    {
                         leakageIssues.Add(
                             $"❌ CRITICAL: Round {roundId}, Pirate {feature.PirateId}: " +
                             $"RecentWinRate={feature.RecentWinRate:F4} but should be {expectedRecentWinRate:F4}");
-                    }
                 }
             }
         }
@@ -218,7 +212,7 @@ public class ModelEvaluationService : IModelEvaluationService
             }
             else
             {
-                Console.WriteLine($"   ✅ Temporal separation verified:");
+                Console.WriteLine("   ✅ Temporal separation verified:");
                 Console.WriteLine($"      Train: rounds {trainMin}-{trainMax} ({trainRounds.Count} records)");
                 Console.WriteLine($"      Test:  rounds {testMin}-{testMax} ({testRounds.Count} records)");
             }
@@ -229,13 +223,13 @@ public class ModelEvaluationService : IModelEvaluationService
 
         return report;
     }
-    
+
     private List<MlPirateFeature> ConvertToMlFormat(List<PirateFeatureRecord> features)
     {
         return features.Select(f => new MlPirateFeature
         {
             Position = f.Position,
-            ArenaId = f.ArenaId,  // ✅ Add this
+            ArenaId = f.ArenaId, // ✅ Add this
             CurrentOdds = Math.Max(2, f.CurrentOdds),
             FoodAdjustment = f.FoodAdjustment,
             Strength = f.Strength,

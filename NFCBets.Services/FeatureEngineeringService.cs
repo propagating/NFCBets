@@ -1,23 +1,15 @@
 using Microsoft.EntityFrameworkCore;
-using NFCBets.Classical.Models;
 using NFCBets.EF.Models;
 using NFCBets.Services.Interfaces;
-using NFCBets.Services.Models;
+using NFCBets.Utilities.Models;
 
 namespace NFCBets.Services;
 
-public class FeatureEngineeringService : IFeatureEngineeringService
+public class FeatureEngineeringService(NfcbetsContext context)
+    : IFeatureEngineeringService
 {
-    private readonly NfcbetsContext _context;
-    private readonly IFoodAdjustmentService _foodAdjustmentService;
     private Dictionary<int, List<RoundResult>>? _allHistoricalResultsCache;
     private Dictionary<int, Pirate>? _pirateCache;
-
-    public FeatureEngineeringService(NfcbetsContext context, IFoodAdjustmentService foodAdjustmentService)
-    {
-        _context = context;
-        _foodAdjustmentService = foodAdjustmentService;
-    }
 
     /// OPTIMIZED: CreateFeaturesForRoundAsync with caching
     public async Task<List<PirateFeatureRecord>> CreateFeaturesForRoundAsync(int roundId)
@@ -29,10 +21,10 @@ public class FeatureEngineeringService : IFeatureEngineeringService
         //Console.WriteLine($"   Loading placements for round {roundId}...");
 
         // Check total placements first
-        var allPlacements = await _context.RoundPiratePlacements
+        var allPlacements = await context.RoundPiratePlacements
             .Where(rpp => rpp.RoundId == roundId)
             .ToListAsync();
-        
+
         if (!allPlacements.Any())
         {
             Console.WriteLine($"   ⚠️ WARNING: No valid placements for round {roundId}!");
@@ -65,12 +57,12 @@ public class FeatureEngineeringService : IFeatureEngineeringService
             .ToList();
 
         // OPTIMIZATION 3: Batch load pirates
-        _pirateCache = await _context.Pirates
+        _pirateCache = await context.Pirates
             .Where(p => pirateIds.Contains(p.PirateId))
             .ToDictionaryAsync(p => p.PirateId, p => p);
 
         // OPTIMIZATION 4: Batch load ALL historical results for these pirates
-        _allHistoricalResultsCache = (await _context.RoundResults
+        _allHistoricalResultsCache = (await context.RoundResults
                 .Where(rr => pirateIds.Contains(rr.PirateId) &&
                              rr.IsComplete &&
                              rr.RoundId.HasValue &&
@@ -81,7 +73,7 @@ public class FeatureEngineeringService : IFeatureEngineeringService
 
         // OPTIMIZATION 5: Pre-calculate rivals for each arena
         var rivalsByArena = placements
-            .Where(p => p.ArenaId.HasValue && p.PirateId.HasValue)
+            .Where(p => p is { ArenaId: not null, PirateId: not null })
             .GroupBy(p => p.ArenaId!.Value)
             .ToDictionary(
                 g => g.Key,
@@ -125,7 +117,7 @@ public class FeatureEngineeringService : IFeatureEngineeringService
         var features = new List<PirateFeatureRecord>();
 
         // Get all completed rounds
-        var completedRounds = await _context.RoundResults
+        var completedRounds = await context.RoundResults
             .Where(rr => rr.IsComplete && rr.RoundId.HasValue)
             .Select(rr => rr.RoundId!.Value)
             .Distinct()
@@ -136,11 +128,11 @@ public class FeatureEngineeringService : IFeatureEngineeringService
         Console.WriteLine($"Processing {completedRounds.Count} rounds...");
 
         // Load ALL pirates once
-        _pirateCache = await _context.Pirates
+        _pirateCache = await context.Pirates
             .ToDictionaryAsync(p => p.PirateId, p => p);
 
         // Load ALL historical results once
-        _allHistoricalResultsCache = (await _context.RoundResults
+        _allHistoricalResultsCache = (await context.RoundResults
                 .Where(rr => rr.IsComplete && rr.RoundId.HasValue)
                 .ToListAsync())
             .GroupBy(rr => rr.PirateId)
@@ -154,12 +146,12 @@ public class FeatureEngineeringService : IFeatureEngineeringService
             var batchRounds = completedRounds.Skip(i).Take(batchSize).ToList();
 
             // EXCLUDE 1:1 odds at query level
-            var batchPlacements = await _context.RoundPiratePlacements
+            var batchPlacements = await context.RoundPiratePlacements
                 .Where(rpp => batchRounds.Contains(rpp.RoundId!.Value) &&
                               (rpp.CurrentOdds ?? rpp.StartingOdds) > 1) // ✅ Exclude 1:1 odds
                 .ToListAsync();
 
-            var batchResults = await _context.RoundResults
+            var batchResults = await context.RoundResults
                 .Where(rr => batchRounds.Contains(rr.RoundId!.Value))
                 .ToListAsync();
 
@@ -212,47 +204,7 @@ public class FeatureEngineeringService : IFeatureEngineeringService
         Console.WriteLine($"✅ Generated {features.Count} training features (1:1 odds excluded)");
         return features;
     }
-
-    private async Task<PirateFeatureRecord?> BuildFeatureRecordAsync(
-        int pirateId,
-        int arenaId,
-        int roundId,
-        RoundPiratePlacement placement,
-        List<int> rivalIds,
-        bool? isWinner)
-    {
-        // Get pirate data
-        var pirate = await _context.Pirates.FirstOrDefaultAsync(p => p.PirateId == pirateId);
-        if (pirate == null) return null;
-
-        // Calculate all features SEQUENTIALLY
-        var historicalStats = await GetHistoricalStatsAsync(pirateId, arenaId, roundId);
-        var arenaWinRate = await GetArenaWinRateAsync(pirateId, arenaId, roundId);
-        var recentWinRate = await GetRecentFormAsync(pirateId, roundId);
-        var rivalPerformance = await GetRivalPerformanceAsync(pirateId, rivalIds, roundId);
-
-        return new PirateFeatureRecord
-        {
-            RoundId = roundId,
-            ArenaId = arenaId,
-            PirateId = pirateId,
-            Position = placement.PirateSeatPosition ?? 0,
-            StartingOdds = placement.StartingOdds,
-            CurrentOdds = placement.CurrentOdds ?? placement.StartingOdds,
-            FoodAdjustment = placement.PirateFoodAdjustment,
-            Strength = pirate.Strength ?? 0,
-            Weight = pirate.Weight ?? 0,
-            HistoricalWinRate = historicalStats.WinRate,
-            TotalAppearances = historicalStats.TotalAppearances,
-            AverageOdds = historicalStats.AverageOdds,
-            ArenaWinRate = arenaWinRate,
-            RecentWinRate = recentWinRate,
-            WinRateVsCurrentRivals = rivalPerformance.WinRate,
-            MatchesVsCurrentRivals = rivalPerformance.TotalMatches,
-            AvgRivalStrength = rivalPerformance.AvgRivalStrength,
-            IsWinner = isWinner
-        };
-    }
+    
 
     private PirateFeatureRecord? BuildFeatureRecordOptimized(
         int pirateId,
@@ -269,14 +221,14 @@ public class FeatureEngineeringService : IFeatureEngineeringService
         // Use cached results (no DB query)
         var historicalResults = _allHistoricalResultsCache!
             .GetValueOrDefault(pirateId, new List<RoundResult>())
-            .Where(rr => rr.RoundId < roundId)  // ✅ This MUST be here
+            .Where(rr => rr.RoundId < roundId) // ✅ This MUST be here
             .ToList();
 
         // Calculate all stats from cached data (all in-memory, no DB queries)
         var historicalStats = GetHistoricalStatsOptimized(historicalResults);
         var arenaWinRate = GetArenaWinRateOptimized(historicalResults, arenaId);
         var recentForm = GetRecentFormOptimized(historicalResults, 10);
-        var rivalPerformance = GetRivalPerformanceOptimized(pirateId, rivalIds, roundId, historicalResults);
+        var rivalPerformance = GetRivalPerformanceOptimized(rivalIds, roundId, historicalResults);
 
         // NORMALIZE ODDS: Treat 1:1 as 2:1 (game minimum)
         var normalizedStartingOdds = Math.Max(2, placement.StartingOdds);
@@ -305,24 +257,6 @@ public class FeatureEngineeringService : IFeatureEngineeringService
         };
     }
 
-    private async Task<(double WinRate, int TotalAppearances, double AverageOdds)> GetHistoricalStatsAsync(int pirateId,
-        int arenaId, int beforeRoundId)
-    {
-        var results = await _context.RoundResults
-            .Where(rr => rr.PirateId == pirateId &&
-                         rr.IsComplete &&
-                         rr.RoundId.HasValue &&
-                         rr.RoundId < beforeRoundId)
-            .ToListAsync();
-
-        if (!results.Any())
-            return (0, 0, 0);
-
-        var wins = results.Count(r => r.IsWinner);
-        var avgOdds = results.Average(r => r.EndingOdds ?? 0);
-
-        return ((double)wins / results.Count, results.Count, avgOdds);
-    }
 
     private (double WinRate, int TotalAppearances, double AverageOdds) GetHistoricalStatsOptimized(
         List<RoundResult> historicalResults)
@@ -356,84 +290,7 @@ public class FeatureEngineeringService : IFeatureEngineeringService
         return (double)recentResults.Count(r => r.IsWinner) / recentResults.Count;
     }
 
-    private async Task<double> GetArenaWinRateAsync(int pirateId, int arenaId, int beforeRoundId)
-    {
-        var arenaResults = await _context.RoundResults
-            .Where(rr => rr.PirateId == pirateId &&
-                         rr.ArenaId == arenaId &&
-                         rr.IsComplete &&
-                         rr.RoundId.HasValue &&
-                         rr.RoundId < beforeRoundId)
-            .ToListAsync();
-
-        if (!arenaResults.Any())
-            return 0;
-
-        return (double)arenaResults.Count(r => r.IsWinner) / arenaResults.Count;
-    }
-
-    private async Task<double> GetRecentFormAsync(int pirateId, int beforeRoundId, int lastN = 10)
-    {
-        var recentResults = await _context.RoundResults
-            .Where(rr => rr.PirateId == pirateId &&
-                         rr.IsComplete &&
-                         rr.RoundId.HasValue &&
-                         rr.RoundId < beforeRoundId)
-            .OrderByDescending(rr => rr.RoundId)
-            .Take(lastN)
-            .ToListAsync();
-
-        if (!recentResults.Any())
-            return 0;
-
-        return (double)recentResults.Count(r => r.IsWinner) / recentResults.Count;
-    }
-
-    private async Task<(double WinRate, int TotalMatches, double AvgRivalStrength)> GetRivalPerformanceAsync(
-        int pirateId,
-        List<int> rivalIds,
-        int beforeRoundId)
-    {
-        if (!rivalIds.Any())
-            return (0, 0, 0);
-
-        var pirateResults = await _context.RoundResults
-            .Where(rr => rr.PirateId == pirateId &&
-                         rr.IsComplete &&
-                         rr.RoundId.HasValue &&
-                         rr.RoundId < beforeRoundId)
-            .Select(rr => new { rr.RoundId, rr.ArenaId, rr.IsWinner })
-            .ToListAsync();
-
-        var rivalResults = await _context.RoundResults
-            .Where(rr => rivalIds.Contains(rr.PirateId) &&
-                         rr.IsComplete &&
-                         rr.RoundId.HasValue &&
-                         rr.RoundId < beforeRoundId)
-            .Select(rr => new { rr.RoundId, rr.ArenaId, rr.PirateId })
-            .ToListAsync();
-
-        var rivalRoundSet = rivalResults
-            .Select(rr => (rr.RoundId!.Value, rr.ArenaId))
-            .ToHashSet();
-
-        var matchups = pirateResults
-            .Where(pr => rivalRoundSet.Contains((pr.RoundId!.Value, pr.ArenaId)))
-            .ToList();
-
-        var rivalStrengths = await _context.Pirates
-            .Where(p => rivalIds.Contains(p.PirateId))
-            .Select(p => p.Strength ?? 0)
-            .ToListAsync();
-
-        var avgRivalStrength = rivalStrengths.Any() ? rivalStrengths.Average() : 0;
-        var winRate = matchups.Any() ? (double)matchups.Count(m => m.IsWinner) / matchups.Count : 0;
-
-        return (winRate, matchups.Count, avgRivalStrength);
-    }
-
     private (double WinRate, int TotalMatches, double AvgRivalStrength) GetRivalPerformanceOptimized(
-        int pirateId,
         List<int> rivalIds,
         int beforeRoundId,
         List<RoundResult> pirateHistoricalResults)
@@ -469,5 +326,31 @@ public class FeatureEngineeringService : IFeatureEngineeringService
         var winRate = matchups.Any() ? (double)matchups.Count(m => m.IsWinner) / matchups.Count : 0;
 
         return (winRate, matchups.Count, avgRivalStrength);
+    }
+    
+    
+    /// <summary>
+    /// Get pirate names for a list of pirate IDs
+    /// </summary>
+    public async Task<Dictionary<int, string>> GetPirateNamesAsync(IEnumerable<int> pirateIds)
+    {
+        var ids = pirateIds.Distinct().ToList();
+        
+        return await context.Pirates
+            .Where(p => ids.Contains(p.Id))
+            .ToDictionaryAsync(
+                p => p.Id, 
+                p => p.PirateName);
+    }
+
+    /// <summary>
+    /// Get all pirate names (cached for performance)
+    /// </summary>
+    public async Task<Dictionary<int, string>> GetAllPirateNamesAsync()
+    {
+        return await context.Pirates
+            .ToDictionaryAsync(
+                p => p.Id, 
+                p => p.PirateName);
     }
 }

@@ -11,4 +11,8 @@
         <PackageReference Include="Microsoft.ML.LightGbm" Version="5.0.0"/>
     </ItemGroup>
 
+    <ItemGroup>
+        <ProjectReference Include="..\NFCBets.Utilities\NFCBets.Utilities.csproj"/>
+    </ItemGroup>
+
 </Project>

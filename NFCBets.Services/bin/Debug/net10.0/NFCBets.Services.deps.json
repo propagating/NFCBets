@@ -10,7 +10,6 @@
         "dependencies": {
           "Microsoft.Extensions.Logging.Abstractions": "10.0.0",
           "Microsoft.ML": "5.0.0",
-          "Microsoft.ML.LightGbm": "5.0.0",
           "NFCBets.Causal": "1.0.0",
           "NFCBets.Classical": "1.0.0",
           "NFCBets.Repository": "1.0.0",
@@ -726,6 +725,7 @@
       },
       "NFCBets.Causal/1.0.0": {
         "dependencies": {
+          "NFCBets.Classical": "1.0.0",
           "NFCBets.EF": "1.0.0",
           "NFCBets.Utilities": "1.0.0"
         },
@@ -737,6 +737,11 @@
         }
       },
       "NFCBets.Classical/1.0.0": {
+        "dependencies": {
+          "Microsoft.ML": "5.0.0",
+          "Microsoft.ML.LightGbm": "5.0.0",
+          "NFCBets.Utilities": "1.0.0"
+        },
         "runtime": {
           "NFCBets.Classical.dll": {
             "assemblyVersion": "1.0.0.0",
@@ -768,6 +773,7 @@
       },
       "NFCBets.Utilities/1.0.0": {
         "dependencies": {
+          "Microsoft.ML": "5.0.0",
           "NFCBets.EF": "1.0.0"
         },
         "runtime": {
