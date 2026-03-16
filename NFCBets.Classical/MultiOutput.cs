@@ -9,7 +9,6 @@ namespace NFCBets.Classical;
 public class MultiOutput : IMlStrategy
 {
     private readonly Dictionary<int, ITransformer> _arenaModels = new();
-
     private readonly MLContext _mlContext;
     private InteractionAnalysisReport? _interactionReport;
 
@@ -27,7 +26,8 @@ public class MultiOutput : IMlStrategy
 
         Console.WriteLine($"   Training {StrategyName}...");
 
-        if (_interactionReport != null) Console.WriteLine("      Applying interaction controls");
+        if (_interactionReport != null) 
+            Console.WriteLine("      Applying interaction controls");
 
         for (var arenaId = 1; arenaId <= 5; arenaId++)
         {
@@ -51,7 +51,6 @@ public class MultiOutput : IMlStrategy
 
             var dataView = _mlContext.Data.LoadFromEnumerable(multiOutputData);
 
-            // Train 4 separate binary models, one for each position
             var pipeline = _mlContext.Transforms.Concatenate("Features",
                     nameof(MultiOutputFeature.Pirate0_Score),
                     nameof(MultiOutputFeature.Pirate1_Score),
@@ -101,7 +100,7 @@ public class MultiOutput : IMlStrategy
 
                 var probs = Softmax(result.Score);
 
-                for (var i = 0; i < 4; i++)
+for (var i = 0; i < 4; i++)
                     predictions.Add(new PiratePrediction
                     {
                         RoundId = pirates[i].RoundId,
@@ -159,7 +158,7 @@ public class MultiOutput : IMlStrategy
         return new ModelEvaluationReport
         {
             Accuracy = accuracy,
-            AUC = auc,
+            Auc = auc,
             F1Score = accuracy * 0.5,
             TestDataSize = testData.Count,
             LogLoss = logLoss
@@ -183,7 +182,8 @@ public class MultiOutput : IMlStrategy
         for (var arenaId = 1; arenaId <= 5; arenaId++)
         {
             var arenaPath = path.Replace(".zip", $"_multioutput_arena{arenaId}.zip");
-            if (File.Exists(arenaPath)) _arenaModels[arenaId] = _mlContext.Model.Load(arenaPath, out _);
+            if (File.Exists(arenaPath))
+                _arenaModels[arenaId] = _mlContext.Model.Load(arenaPath, out _);
         }
     }
 
@@ -203,11 +203,16 @@ public class MultiOutput : IMlStrategy
         return exps.Select(e => e / sum).ToArray();
     }
 
-    private List<MultiOutputFeature> ConvertToMultiOutputFormat(List<PirateFeatureRecord> data)
+    private List<MultiOutputFeature> ConvertToMultiOutputFormat(List<PirateFeatureRecord> arenaData)
     {
         var result = new List<MultiOutputFeature>();
 
-        var roundGroups = data.GroupBy(f => f.RoundId);
+        // Pre-compute grouped data for feature conversion
+        var groupedByRoundArena = arenaData
+            .GroupBy(f => (f.RoundId, f.ArenaId))
+            .ToDictionary(g => g.Key, g => g.ToList());
+
+        var roundGroups = arenaData.GroupBy(f => f.RoundId);
 
         foreach (var round in roundGroups)
         {
@@ -217,32 +222,28 @@ public class MultiOutput : IMlStrategy
             var winnerIndex = pirates.FindIndex(p => p.IsWinner == true);
             if (winnerIndex < 0) continue;
 
-            // Calculate interaction features for each pirate
+            // Calculate composite scores and interaction features using new property names
+            var scores = new float[4];
             var penalties = new float[4];
             var bonuses = new float[4];
-            var scores = new float[4];
 
             for (var i = 0; i < 4; i++)
             {
-                var mlFeature = new MlPirateFeature();
-                InteractionCalculator.ApplyInteractionFeatures(mlFeature, pirates[i], _interactionReport);
+                var p = pirates[i];
+                var mlFeature = FeatureConversionHelper.ConvertSingle(
+                    p, groupedByRoundArena, _interactionReport);
 
-                penalties[i] = mlFeature.Penalty_FoodPosition + mlFeature.Penalty_FoodFavorite +
-                               mlFeature.Penalty_StrengthPosition + mlFeature.Penalty_StrengthWeakRivals +
-                               mlFeature.Penalty_FavoriteInexperienced + mlFeature.Penalty_LowStrengthFavorite;
-
-                bonuses[i] = mlFeature.Bonus_UndervaluedStrong + mlFeature.Bonus_HotStreakBeatsRivals +
-                             mlFeature.Bonus_ArenaSpecialistModerateOdds + mlFeature.Bonus_FoodPosition3;
-
-                // Calculate a composite score for each pirate
+                // Composite score based on key features
                 scores[i] = (float)(
-                    pirates[i].Strength / 100.0 * 0.2 +
-                    1.0 / Math.Max(2, pirates[i].CurrentOdds) * 0.3 +
-                    pirates[i].HistoricalWinRate * 0.2 +
-                    pirates[i].ArenaWinRate * 0.15 +
-                    pirates[i].FoodAdjustment / 10.0 * 0.1 +
-                    (4 - pirates[i].Position) / 4.0 * 0.05
+                    p.Strength / 100.0 * 0.3 +
+                    (1.0 / Math.Max(2, p.CurrentOdds)) * 0.25 +
+                    p.HistoricalWinRate * 0.2 +
+                    p.ArenaWinRate * 0.15 +
+                    p.RecentWinRate * 0.1
                 );
+
+                penalties[i] = InteractionCalculator.GetTotalPenalty(mlFeature);
+                bonuses[i] = InteractionCalculator.GetTotalBonus(mlFeature);
             }
 
             result.Add(new MultiOutputFeature

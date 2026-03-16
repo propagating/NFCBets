@@ -774,6 +774,7 @@
       "NFCBets.Utilities/1.0.0": {
         "dependencies": {
           "Microsoft.ML": "5.0.0",
+          "Microsoft.ML.LightGbm": "5.0.0",
           "NFCBets.EF": "1.0.0"
         },
         "runtime": {

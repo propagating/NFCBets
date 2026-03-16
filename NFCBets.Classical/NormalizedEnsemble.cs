@@ -1,3 +1,4 @@
+using System.Text.Json;
 using NFCBets.Classical.Interfaces;
 using NFCBets.Classical.Models;
 using NFCBets.Utilities;
@@ -6,95 +7,117 @@ using NFCBets.Utilities.Models;
 namespace NFCBets.Classical;
 
 /// <summary>
-/// Ensemble with proper probability normalization per arena/round
-/// Combines multiple models and ensures probabilities sum to 1
+/// Ensemble that normalizes probabilities per round to sum to 1
+/// Addresses the independence assumption violation in binary classifiers
 /// </summary>
 public class NormalizedEnsemble : IMlStrategy
 {
     public string StrategyName => "Normalized Ensemble";
     
-    private readonly List<(IMlStrategy Strategy, double Weight)> _strategies = new();
+    private readonly List<IMlStrategy> _baseStrategies = new();
+    private readonly Dictionary<string, double> _strategyWeights = new();
     private InteractionAnalysisReport? _interactionReport;
-
-    public NormalizedEnsemble()
-    {
-        // Initialize component models with their weights
-        // Weights based on expected performance (can be tuned via validation)
-    }
-
+    
     public async Task TrainAsync(List<PirateFeatureRecord> trainingData, InteractionAnalysisReport? interactionReport = null)
     {
         _interactionReport = interactionReport;
         
         Console.WriteLine($"   Training {StrategyName}...");
         
-        // Initialize strategies with weights
-        _strategies.Clear();
-        _strategies.Add((new MultinomialLogit(), 0.25));
-        _strategies.Add((new PlackettLuce(), 0.25));
-        _strategies.Add((new ConditionalLogisticRegression(), 0.20));
-        _strategies.Add((new BradleyTerry(), 0.15));
-        _strategies.Add((new MultiClassPairwise(), 0.15));
+        // Initialize base strategies
+        _baseStrategies.Clear();
+        _baseStrategies.Add(new BinaryClassification());
+        _baseStrategies.Add(new LogisticRegression());
+        _baseStrategies.Add(new BradleyTerry());
+        _baseStrategies.Add(new PlackettLuce());
+        _baseStrategies.Add(new MultinomialLogit());
 
-        // Train all component models
-        foreach (var (strategy, weight) in _strategies)
+        // Split data for weight optimization
+        var uniqueRounds = trainingData.Select(f => f.RoundId).Distinct().OrderBy(r => r).ToList();
+        var splitIndex = (int)(uniqueRounds.Count * 0.8);
+        var trainRounds = uniqueRounds.Take(splitIndex).ToHashSet();
+        var valRounds = uniqueRounds.Skip(splitIndex).ToHashSet();
+        
+        var trainData = trainingData.Where(f => trainRounds.Contains(f.RoundId)).ToList();
+        var valData = trainingData.Where(f => valRounds.Contains(f.RoundId)).ToList();
+
+        // Train each base strategy
+        foreach (var strategy in _baseStrategies)
         {
             try
             {
-                Console.WriteLine($"      Training {strategy.StrategyName} (weight: {weight:P0})...");
-                await strategy.TrainAsync(trainingData, interactionReport);
-                Console.WriteLine($"      ✅ {strategy.StrategyName} trained");
+                Console.WriteLine($"      Training {strategy.StrategyName}...");
+                await strategy.TrainAsync(trainData, interactionReport);
+                Console.WriteLine($"         ✅ {strategy.StrategyName} trained");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"      ❌ {strategy.StrategyName} failed: {ex.Message}");
+                Console.WriteLine($"         ❌ {strategy.StrategyName} failed: {ex.Message}");
             }
         }
 
-        Console.WriteLine($"   ✅ Ensemble trained with {_strategies.Count} models");
+        // Calculate weights based on validation performance
+        await CalculateStrategyWeights(valData);
+        
+        Console.WriteLine($"   ✅ Trained {_baseStrategies.Count} base strategies with optimized weights");
+    }
+
+    private async Task CalculateStrategyWeights(List<PirateFeatureRecord> valData)
+    {
+        Console.WriteLine("      Calculating strategy weights...");
+        
+        var performances = new Dictionary<string, double>();
+        
+        foreach (var strategy in _baseStrategies)
+        {
+            try
+            {
+                var eval = await strategy.EvaluateAsync(valData);
+                performances[strategy.StrategyName] = eval.Auc;
+                Console.WriteLine($"         {strategy.StrategyName}: AUC = {eval.Auc:F4}");
+            }
+            catch
+            {
+                performances[strategy.StrategyName] = 0.5; // Default to random
+            }
+        }
+
+        // Convert AUC to weights (higher AUC = higher weight)
+        var totalAuc = performances.Values.Sum();
+        foreach (var kvp in performances)
+        {
+            _strategyWeights[kvp.Key] = totalAuc > 0 ? kvp.Value / totalAuc : 1.0 / _baseStrategies.Count;
+        }
+
+        Console.WriteLine("      Strategy weights:");
+        foreach (var kvp in _strategyWeights.OrderByDescending(k => k.Value))
+        {
+            Console.WriteLine($"         {kvp.Key}: {kvp.Value:P1}");
+        }
     }
 
     public async Task<List<PiratePrediction>> PredictAsync(List<PirateFeatureRecord> features)
     {
-        // Get predictions from all models
-        var modelPredictions = new List<List<PiratePrediction>>();
-        var modelWeights = new List<double>();
-
-        foreach (var (strategy, weight) in _strategies)
+        // Get predictions from all strategies
+        var allPredictions = new Dictionary<string, List<PiratePrediction>>();
+        
+        foreach (var strategy in _baseStrategies)
         {
             try
             {
                 var preds = await strategy.PredictAsync(features);
-                if (preds.Any())
-                {
-                    modelPredictions.Add(preds);
-                    modelWeights.Add(weight);
-                }
+                allPredictions[strategy.StrategyName] = preds;
             }
             catch
             {
-                // Skip failed models
+                // Skip failed strategies
             }
         }
 
-        if (!modelPredictions.Any())
-        {
-            // Return uniform probabilities if all models fail
-            return features.Select(f => new PiratePrediction
-            {
-                RoundId = f.RoundId,
-                ArenaId = f.ArenaId,
-                PirateId = f.PirateId,
-                WinProbability = 0.25f,
-                Payout = Math.Max(2, f.CurrentOdds)
-            }).ToList();
-        }
+        if (!allPredictions.Any())
+            throw new InvalidOperationException("All strategies failed");
 
-        // Normalize weights for active models
-        var totalWeight = modelWeights.Sum();
-        var normalizedWeights = modelWeights.Select(w => w / totalWeight).ToList();
-
-        // Combine predictions per round with proper normalization
+        // Combine predictions with weighted average
         var combinedPredictions = new List<PiratePrediction>();
 
         foreach (var roundGroup in features.GroupBy(f => (f.RoundId, f.ArenaId)))
@@ -102,45 +125,47 @@ public class NormalizedEnsemble : IMlStrategy
             var pirates = roundGroup.OrderBy(p => p.Position).ToList();
             if (pirates.Count != 4) continue;
 
-            var roundId = roundGroup.Key.RoundId;
-            var arenaId = roundGroup.Key.ArenaId;
+            var combinedProbs = new double[4];
 
-            // Aggregate probabilities from all models
-// Aggregate probabilities from all models
-            var aggregatedProbs = new double[4];
-
-            for (int modelIdx = 0; modelIdx < modelPredictions.Count; modelIdx++)
+            foreach (var (strategyName, preds) in allPredictions)
             {
-                var modelPreds = modelPredictions[modelIdx]
-                    .Where(p => p.RoundId == roundId && p.ArenaId == arenaId)
-                    .OrderBy(p => pirates.FindIndex(pi => pi.PirateId == p.PirateId))
+                var roundPreds = preds
+                    .Where(p => p.RoundId == roundGroup.Key.RoundId && p.ArenaId == roundGroup.Key.ArenaId)
+                    .OrderBy(p => pirates.FindIndex(pr => pr.PirateId == p.PirateId))
                     .ToList();
 
-                if (modelPreds.Count != 4) continue;
+                if (roundPreds.Count != 4) continue;
 
-                // First normalize model predictions to ensure they sum to 1
-                var modelSum = modelPreds.Sum(p => p.WinProbability);
-                if (modelSum <= 0) modelSum = 1;
+                var weight = _strategyWeights.GetValueOrDefault(strategyName, 1.0 / _baseStrategies.Count);
 
                 for (int i = 0; i < 4; i++)
                 {
-                    var normalizedProb = modelPreds[i].WinProbability / modelSum;
-                    aggregatedProbs[i] += normalizedProb * normalizedWeights[modelIdx];
+                    combinedProbs[i] += roundPreds[i].WinProbability * weight;
                 }
             }
 
-            // Final normalization to ensure probabilities sum to 1
-            var totalProb = aggregatedProbs.Sum();
-            if (totalProb <= 0) totalProb = 1;
+// Normalize to sum to 1
+            var total = combinedProbs.Sum();
+            if (total > 0)
+            {
+                for (int i = 0; i < 4; i++)
+                {
+                    combinedProbs[i] /= total;
+                }
+            }
+            else
+            {
+                combinedProbs = new[] { 0.25, 0.25, 0.25, 0.25 };
+            }
 
             for (int i = 0; i < 4; i++)
             {
                 combinedPredictions.Add(new PiratePrediction
                 {
-                    RoundId = roundId,
-                    ArenaId = arenaId,
+                    RoundId = pirates[i].RoundId,
+                    ArenaId = pirates[i].ArenaId,
                     PirateId = pirates[i].PirateId,
-                    WinProbability = (float)(aggregatedProbs[i] / totalProb),
+                    WinProbability = (float)Math.Clamp(combinedProbs[i], 0.01, 0.99),
                     Payout = Math.Max(2, pirates[i].CurrentOdds)
                 });
             }
@@ -191,7 +216,7 @@ public class NormalizedEnsemble : IMlStrategy
         return new ModelEvaluationReport
         {
             Accuracy = accuracy,
-            AUC = auc,
+            Auc = auc,
             F1Score = accuracy * 0.5,
             TestDataSize = testData.Count,
             LogLoss = logLoss
@@ -200,35 +225,70 @@ public class NormalizedEnsemble : IMlStrategy
 
     public void SaveModel(string path)
     {
-        var basePath = path.Replace(".zip", "");
-        
-        for (int i = 0; i < _strategies.Count; i++)
+        // Save weights
+        var data = new NormalizedEnsembleModelData
+        {
+            StrategyWeights = new Dictionary<string, double>(_strategyWeights)
+        };
+
+        var json = JsonSerializer.Serialize(data,
+            new JsonSerializerOptions { WriteIndented = true });
+        File.WriteAllText(path.Replace(".zip", "_normalized_ensemble.json"), json);
+
+        // Save each base strategy
+        for (int i = 0; i < _baseStrategies.Count; i++)
         {
             try
             {
-                _strategies[i].Strategy.SaveModel($"{basePath}_ensemble_component{i}.zip");
+                _baseStrategies[i].SaveModel(path.Replace(".zip", $"_normalized_base{i}.zip"));
             }
             catch
             {
-                // Skip failed saves
+                // Some strategies may not support saving
             }
         }
     }
 
     public void LoadModel(string path)
     {
-        var basePath = path.Replace(".zip", "");
-        
-        for (int i = 0; i < _strategies.Count; i++)
+        var jsonPath = path.Replace(".zip", "_normalized_ensemble.json");
+        if (File.Exists(jsonPath))
+        {
+            var json = File.ReadAllText(jsonPath);
+            var data = JsonSerializer.Deserialize<NormalizedEnsembleModelData>(json);
+            if (data != null)
+            {
+                _strategyWeights.Clear();
+                foreach (var kvp in data.StrategyWeights)
+                {
+                    _strategyWeights[kvp.Key] = kvp.Value;
+                }
+            }
+        }
+
+        // Load base strategies
+        _baseStrategies.Clear();
+        _baseStrategies.Add(new BinaryClassification());
+        _baseStrategies.Add(new LogisticRegression());
+        _baseStrategies.Add(new BradleyTerry());
+        _baseStrategies.Add(new PlackettLuce());
+        _baseStrategies.Add(new MultinomialLogit());
+
+        for (int i = 0; i < _baseStrategies.Count; i++)
         {
             try
             {
-                _strategies[i].Strategy.LoadModel($"{basePath}_ensemble_component{i}.zip");
+                _baseStrategies[i].LoadModel(path.Replace(".zip", $"_normalized_base{i}.zip"));
             }
             catch
             {
-                // Skip failed loads
+                // Some strategies may not have saved models
             }
         }
     }
+}
+
+internal class NormalizedEnsembleModelData
+{
+    public Dictionary<string, double> StrategyWeights { get; set; } = new();
 }

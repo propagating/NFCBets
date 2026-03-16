@@ -1,4 +1,3 @@
-using System.Text.Json;
 using NFCBets.Causal.Models;
 using NFCBets.Utilities.Models;
 
@@ -8,9 +7,7 @@ public class InteractionEffectAnalyzer
 {
     public async Task<InteractionAnalysisReport> AnalyzeAllInteractionsAsync(List<PirateFeatureRecord> data)
     {
-        Console.WriteLine("\n═══════════════════════════════════════════════════");
-        Console.WriteLine("🔬 COMPREHENSIVE INTERACTION EFFECT ANALYSIS");
-        Console.WriteLine("═══════════════════════════════════════════════════\n");
+        Console.WriteLine("\n🔬 Running Interaction Effect Analysis...\n");
 
         var report = new InteractionAnalysisReport
         {
@@ -18,271 +15,495 @@ public class InteractionEffectAnalyzer
             TotalRecords = data.Count
         };
 
-        var validData = data.Where(f => f.IsWinner.HasValue).ToList();
-
-        // ════════════════════════════════════════════════════════
-        // CATEGORY 1: Food Interactions
-        // ════════════════════════════════════════════════════════
-        Console.WriteLine("📊 CATEGORY 1: Food Interactions");
-
-        report.Interactions.Add(await TestInteraction(validData,
-            "Food x Position",
-            f => f.FoodAdjustment >= 1,
-            f => f.Position <= 1,
-            "Positive food AND front position"));
-
-        report.Interactions.Add(await TestInteraction(validData,
-            "Food x Favorite",
-            f => f.FoodAdjustment >= 1,
-            f => f.CurrentOdds <= 2,
-            "Positive food AND favorite status"));
-
-        report.Interactions.Add(await TestInteraction(validData,
-            "Food x Strength",
-            f => f.FoodAdjustment >= 1,
-            f => f.Strength >= 60,
-            "Positive food AND high strength"));
-
-        report.Interactions.Add(await TestInteraction(validData,
-            "Food x Weak Rivals",
-            f => f.FoodAdjustment >= 1,
-            f => f.AvgRivalStrength < 40,
-            "Positive food AND weak competition"));
-
-        report.Interactions.Add(await TestInteraction(validData,
-            "Negative Food x Back Position",
-            f => f.FoodAdjustment <= -1,
-            f => f.Position >= 3,
-            "Negative food AND back position"));
-
-        report.Interactions.Add(await TestInteraction(validData,
-            "Food x Historical Winner",
-            f => f.FoodAdjustment >= 1,
-            f => f.HistoricalWinRate >= 0.3,
-            "Positive food AND strong history"));
-
-        // ════════════════════════════════════════════════════════
-        // CATEGORY 2: Position Interactions
-        // ════════════════════════════════════════════════════════
-        Console.WriteLine("\n📊 CATEGORY 2: Position Interactions");
-
-        report.Interactions.Add(await TestInteraction(validData,
-            "Front Position x High Strength",
-            f => f.Position <= 1,
-            f => f.Strength >= 60,
-            "Front position AND high strength"));
-
-        report.Interactions.Add(await TestInteraction(validData,
-            "Front Position x Favorite",
-            f => f.Position <= 1,
-            f => f.CurrentOdds <= 2,
-            "Front position AND favorite"));
-
-        report.Interactions.Add(await TestInteraction(validData,
-            "Back Position x Longshot",
-            f => f.Position >= 3,
-            f => f.CurrentOdds >= 10,
-            "Back position AND longshot odds"));
-
-        report.Interactions.Add(await TestInteraction(validData,
-            "Position x Rival Strength",
-            f => f.Position <= 1,
-            f => f.AvgRivalStrength >= 50,
-            "Front position AND strong rivals"));
-
-        // ════════════════════════════════════════════════════════
-        // CATEGORY 3: Strength/Odds Interactions
-        // ════════════════════════════════════════════════════════
-        Console.WriteLine("\n📊 CATEGORY 3: Strength/Odds Interactions");
-
-        report.Interactions.Add(await TestInteraction(validData,
-            "High Strength x Undervalued",
-            f => f.Strength >= 60,
-            f => f.CurrentOdds >= 5,
-            "High strength but undervalued by odds"));
-
-        report.Interactions.Add(await TestInteraction(validData,
-            "Low Strength x Favorite",
-            f => f.Strength <= 40,
-            f => f.CurrentOdds <= 2,
-            "Low strength but favorite (overvalued?)"));
-
-        report.Interactions.Add(await TestInteraction(validData,
-            "Strength x Weak Rivals",
-            f => f.Strength >= 60,
-            f => f.AvgRivalStrength < 40,
-            "High strength AND weak competition"));
-
-        report.Interactions.Add(await TestInteraction(validData,
-            "Strength Advantage x Front Position",
-            f => f.Strength - f.AvgRivalStrength >= 15,
-            f => f.Position <= 1,
-            "Large strength advantage AND front position"));
-
-        // ════════════════════════════════════════════════════════
-        // CATEGORY 4: Historical Performance Interactions
-        // ════════════════════════════════════════════════════════
-        Console.WriteLine("\n📊 CATEGORY 4: Historical Performance Interactions");
-
-        report.Interactions.Add(await TestInteraction(validData,
-            "Hot Streak x Favorite",
-            f => f.RecentWinRate >= 0.4,
-            f => f.CurrentOdds <= 2,
-            "Recent hot streak AND favorite status"));
-
-        report.Interactions.Add(await TestInteraction(validData,
-            "Cold Streak x Undervalued",
-            f => f.RecentWinRate <= 0.1,
-            f => f.CurrentOdds >= 8,
-            "Recent cold streak AND undervalued"));
-
-        report.Interactions.Add(await TestInteraction(validData,
-            "Good vs Rivals x Front Position",
-            f => f.WinRateVsCurrentRivals >= 0.35,
-            f => f.Position <= 1,
-            "Beats these rivals AND front position"));
-
-        report.Interactions.Add(await TestInteraction(validData,
-            "Arena Specialist x Favorite",
-            f => f.ArenaWinRate >= 0.35,
-            f => f.CurrentOdds <= 3,
-            "Arena specialist AND favorite"));
-
-        report.Interactions.Add(await TestInteraction(validData,
-            "Inexperienced x Favorite",
-            f => f.TotalAppearances <= 50,
-            f => f.CurrentOdds <= 2,
-            "Few appearances AND favorite (risky?)"));
-
-        // ════════════════════════════════════════════════════════
-        // CATEGORY 5: Arena-Specific Interactions
-        // ════════════════════════════════════════════════════════
-        Console.WriteLine("\n📊 CATEGORY 5: Arena-Specific Interactions");
-
-        for (var arenaId = 1; arenaId <= 5; arenaId++)
+        // Original two-way interactions
+        var twoWayInteractions = new List<InteractionAnalysisEffect>
         {
-            report.Interactions.Add(await TestInteraction(validData,
-                $"Arena {arenaId} x Food Bonus",
-                f => f.ArenaId == arenaId,
-                f => f.FoodAdjustment >= 1,
-                $"Arena {arenaId} AND positive food"));
+            AnalyzeFoodPositionInteraction(data),
+            AnalyzeFoodFavoriteInteraction(data),
+            AnalyzeStrengthPositionInteraction(data),
+            AnalyzeStrengthWeakRivalsInteraction(data),
+            AnalyzeFavoriteInexperiencedInteraction(data),
+            AnalyzeLowStrengthFavoriteInteraction(data),
+            AnalyzeUndervaluedStrongInteraction(data),
+            AnalyzeArenaSpecialistModerateOddsInteraction(data),
+            AnalyzeHotStreakBeatsRivalsInteraction(data),
+            AnalyzeFoodPosition3Interaction(data)
+        };
 
-            report.Interactions.Add(await TestInteraction(validData,
-                $"Arena {arenaId} x Front Position",
-                f => f.ArenaId == arenaId,
-                f => f.Position <= 1,
-                $"Arena {arenaId} AND front position"));
+        // Three-way interactions
+        var threeWayInteractions = new List<InteractionAnalysisEffect>
+        {
+            AnalyzeFoodPositionStrengthInteraction(data),
+            AnalyzeUndervaluedStrongBeatsRivalsInteraction(data)
+        };
+
+        // NEW: Arena-specific analyses
+        var arenaInteractions = AnalyzeArenaSpecificEffects(data);
+
+        // Combine all interactions
+        report.Interactions = twoWayInteractions
+            .Concat(threeWayInteractions)
+            .Concat(arenaInteractions)
+            .Where(i => i != null)
+            .ToList()!;
+
+        // Classify interactions
+        foreach (var interaction in report.Interactions)
+        {
+            if (interaction.IsAntagonistic && interaction.IsSignificant)
+                report.AntagonisticInteractions.Add(interaction);
+            else if (interaction.IsSynergistic && interaction.IsSignificant)
+                report.SynergisticInteractions.Add(interaction);
+            else
+                report.NeutralInteractions.Add(interaction);
         }
 
-        // ════════════════════════════════════════════════════════
-        // CATEGORY 6: Three-Way Interactions
-        // ════════════════════════════════════════════════════════
-        Console.WriteLine("\n📊 CATEGORY 6: Three-Way Interactions");
-
-        report.Interactions.Add(await TestThreeWayInteraction(validData,
-            "Food x Position x Strength",
-            f => f.FoodAdjustment >= 1,
-            f => f.Position <= 1,
-            f => f.Strength >= 60,
-            "Positive food AND front position AND high strength"));
-
-        report.Interactions.Add(await TestThreeWayInteraction(validData,
-            "Food x Favorite x Arena Specialist",
-            f => f.FoodAdjustment >= 1,
-            f => f.CurrentOdds <= 2,
-            f => f.ArenaWinRate >= 0.35,
-            "Positive food AND favorite AND arena specialist"));
-
-        report.Interactions.Add(await TestThreeWayInteraction(validData,
-            "Front Position x Hot Streak x Strong Rivals",
-            f => f.Position <= 1,
-            f => f.RecentWinRate >= 0.35,
-            f => f.AvgRivalStrength >= 50,
-            "Front position AND hot streak AND strong rivals"));
-
-        report.Interactions.Add(await TestThreeWayInteraction(validData,
-            "Undervalued x High Strength x Good vs Rivals",
-            f => f.CurrentOdds >= 5,
-            f => f.Strength >= 55,
-            f => f.WinRateVsCurrentRivals >= 0.3,
-            "Undervalued AND strong AND beats rivals"));
-
-        // ════════════════════════════════════════════════════════
-        // CATEGORY 7: Synergistic (Positive) Interactions
-        // ════════════════════════════════════════════════════════
-        Console.WriteLine("\n📊 CATEGORY 7: Testing for Synergistic Interactions");
-
-        report.Interactions.Add(await TestInteraction(validData,
-            "Food x Position 3 (Synergy?)",
-            f => f.FoodAdjustment >= 1,
-            f => f.Position == 3,
-            "Positive food AND position 3"));
-
-        report.Interactions.Add(await TestInteraction(validData,
-            "Moderate Odds x Arena Specialist",
-            f => f.CurrentOdds >= 3 && f.CurrentOdds <= 6,
-            f => f.ArenaWinRate >= 0.3,
-            "Moderate odds AND arena specialist"));
-
-        // ════════════════════════════════════════════════════════
-        // SUMMARIZE AND RANK
-        // ════════════════════════════════════════════════════════
-        ClassifyInteractions(report);
-        DisplayInteractionReport(report);
-        SaveInteractionReport(report);
+        // Display results
+        DisplayInteractionResults(report);
+        DisplayArenaAnalysis(data, arenaInteractions);
 
         return report;
     }
 
-    private async Task<InteractionAnalysisEffect> TestInteraction(
-        List<PirateFeatureRecord> data,
-        string name,
-        Func<PirateFeatureRecord, bool> condition1,
-        Func<PirateFeatureRecord, bool> condition2,
-        string description)
+    #region Arena-Specific Analysis
+
+    private List<InteractionAnalysisEffect> AnalyzeArenaSpecificEffects(List<PirateFeatureRecord> data)
     {
-        // Group 1: Neither condition
-        var group00 = data.Where(f => !condition1(f) && !condition2(f)).ToList();
-        var winRate00 = group00.Any() ? group00.Average(f => f.IsWinner == true ? 1.0 : 0.0) : 0.25;
+        var effects = new List<InteractionAnalysisEffect>();
 
-        // Group 2: Only condition 1
-        var group10 = data.Where(f => condition1(f) && !condition2(f)).ToList();
-        var winRate10 = group10.Any() ? group10.Average(f => f.IsWinner == true ? 1.0 : 0.0) : 0.25;
+        Console.WriteLine("   Analyzing arena-specific effects...");
 
-        // Group 3: Only condition 2
-        var group01 = data.Where(f => !condition1(f) && condition2(f)).ToList();
-        var winRate01 = group01.Any() ? group01.Average(f => f.IsWinner == true ? 1.0 : 0.0) : 0.25;
+        // 1. Arena-Strength interaction (do strong pirates do better in certain arenas?)
+        effects.Add(AnalyzeArenaStrengthInteraction(data));
 
-        // Group 4: Both conditions
-        var group11 = data.Where(f => condition1(f) && condition2(f)).ToList();
-        var winRate11 = group11.Any() ? group11.Average(f => f.IsWinner == true ? 1.0 : 0.0) : 0.25;
+        // 2. Arena-Position interaction (does position matter more in certain arenas?)
+        effects.Add(AnalyzeArenaPositionInteraction(data));
 
-        // Calculate main effects
-        var effect1 = (winRate10 + winRate11) / 2 - (winRate00 + winRate01) / 2;
-        var effect2 = (winRate01 + winRate11) / 2 - (winRate00 + winRate10) / 2;
+        // 3. Arena-Food interaction (does food matter more in certain arenas?)
+        effects.Add(AnalyzeArenaFoodInteraction(data));
 
-        // Calculate interaction effect
-        var expectedAdditive = winRate00 + effect1 + effect2;
-        var interactionStrength = winRate11 - expectedAdditive;
+        // 4. Arena specialist effect (pirates who consistently outperform in specific arenas)
+        effects.AddRange(AnalyzeArenaSpecialists(data));
 
-        // Statistical significance
-        var n11 = Math.Max(1, group11.Count);
-        var se = Math.Sqrt(winRate11 * (1 - winRate11) / n11 + 0.0001);
-        var zScore = Math.Abs(interactionStrength) / se;
-        var pValue = 2 * (1 - NormalCDF(zScore));
+        // 5. Arena-Favorite interaction (do favorites perform differently by arena?)
+        effects.Add(AnalyzeArenaFavoriteInteraction(data));
 
-        var icon = interactionStrength > 0.02 ? "✅" : interactionStrength < -0.02 ? "⚠️" : "➖";
-        Console.WriteLine($"   {icon} {name}: {interactionStrength:+0.0%;-0.0%} (n={group11.Count}, p={pValue:F3})");
+        return effects.Where(e => e != null).ToList()!;
+    }
+
+    private InteractionAnalysisEffect AnalyzeArenaStrengthInteraction(List<PirateFeatureRecord> data)
+    {
+        // Hypothesis: Strong pirates (top 25% strength) perform differently across arenas
+        var strongThreshold = data.Select(d => d.Strength).OrderByDescending(s => s).Skip(data.Count / 4).First();
+
+        var arenaStrengthWinRates = new Dictionary<int, (double StrongWinRate, double WeakWinRate, int StrongCount, int WeakCount)>();
+
+        for (int arenaId = 1; arenaId <= 5; arenaId++)
+        {
+            var arenaData = data.Where(d => d.ArenaId == arenaId && d.IsWinner.HasValue).ToList();
+            
+            var strongPirates = arenaData.Where(d => d.Strength >= strongThreshold).ToList();
+            var weakPirates = arenaData.Where(d => d.Strength < strongThreshold).ToList();
+
+            var strongWinRate = strongPirates.Any() ? strongPirates.Average(d => d.IsWinner == true ? 1.0 : 0.0) : 0.25;
+            var weakWinRate = weakPirates.Any() ? weakPirates.Average(d => d.IsWinner == true ? 1.0 : 0.0) : 0.25;
+
+            arenaStrengthWinRates[arenaId] = (strongWinRate, weakWinRate, strongPirates.Count, weakPirates.Count);
+        }
+
+        // Find arena with biggest strength advantage difference
+        var maxDiffArena = arenaStrengthWinRates
+            .OrderByDescending(kvp => kvp.Value.StrongWinRate - kvp.Value.WeakWinRate)
+            .First();
+
+        var minDiffArena = arenaStrengthWinRates
+            .OrderBy(kvp => kvp.Value.StrongWinRate - kvp.Value.WeakWinRate)
+            .First();
+
+        var avgStrongWinRate = arenaStrengthWinRates.Values.Average(v => v.StrongWinRate);
+        var avgWeakWinRate = arenaStrengthWinRates.Values.Average(v => v.WeakWinRate);
+        var variance = arenaStrengthWinRates.Values
+            .Select(v => v.StrongWinRate - v.WeakWinRate)
+            .Select(diff => Math.Pow(diff - (avgStrongWinRate - avgWeakWinRate), 2))
+            .Average();
 
         return new InteractionAnalysisEffect
         {
-            Name = name,
-            Description = description,
+            Name = "Arena-Strength Interaction",
+            Description = $"Strength advantage varies by arena. Arena {maxDiffArena.Key} favors strong pirates most ({maxDiffArena.Value.StrongWinRate - maxDiffArena.Value.WeakWinRate:P1} advantage), Arena {minDiffArena.Key} least ({minDiffArena.Value.StrongWinRate - minDiffArena.Value.WeakWinRate:P1})",
+            InteractionStrength = variance,
+            Effect1Alone = avgStrongWinRate,
+            Effect2Alone = avgWeakWinRate,
+            CombinedEffect = maxDiffArena.Value.StrongWinRate,
+            IsSignificant = variance > 0.001,
+            IsSynergistic = maxDiffArena.Value.StrongWinRate > avgStrongWinRate,
+            IsAntagonistic = false
+        };
+    }
+
+    private InteractionAnalysisEffect AnalyzeArenaPositionInteraction(List<PirateFeatureRecord> data)
+    {
+        // Analyze position effect by arena
+        var arenaPositionWinRates = new Dictionary<int, Dictionary<int, double>>();
+
+        for (int arenaId = 1; arenaId <= 5; arenaId++)
+        {
+            arenaPositionWinRates[arenaId] = new Dictionary<int, double>();
+            var arenaData = data.Where(d => d.ArenaId == arenaId && d.IsWinner.HasValue).ToList();
+
+            for (int pos = 0; pos < 4; pos++)
+            {
+                var posData = arenaData.Where(d => d.Position == pos).ToList();
+                arenaPositionWinRates[arenaId][pos] = posData.Any() 
+                    ? posData.Average(d => d.IsWinner == true ? 1.0 : 0.0) 
+                    : 0.25;
+            }
+        }
+
+        // Find which arena has the most position-dependent results
+        var positionVariances = arenaPositionWinRates.ToDictionary(
+            kvp => kvp.Key,
+            kvp => {
+                var avg = kvp.Value.Values.Average();
+                return kvp.Value.Values.Select(v => Math.Pow(v - avg, 2)).Average();
+            });
+
+        var highestVarianceArena = positionVariances.OrderByDescending(kvp => kvp.Value).First();
+        var lowestVarianceArena = positionVariances.OrderBy(kvp => kvp.Value).First();
+
+        var bestPositionInHighVariance = arenaPositionWinRates[highestVarianceArena.Key]
+            .OrderByDescending(kvp => kvp.Value)
+            .First();
+
+        return new InteractionAnalysisEffect
+        {
+            Name = "Arena-Position Interaction",
+            Description = $"Position matters most in Arena {highestVarianceArena.Key} (variance: {highestVarianceArena.Value:F4}). Best position: {bestPositionInHighVariance.Key} ({bestPositionInHighVariance.Value:P1}). Least position-dependent: Arena {lowestVarianceArena.Key}",
+            InteractionStrength = highestVarianceArena.Value - lowestVarianceArena.Value,
+            Effect1Alone = 0.25,
+            Effect2Alone = 0.25,
+            CombinedEffect = bestPositionInHighVariance.Value,
+            IsSignificant = highestVarianceArena.Value > 0.005,
+            IsSynergistic = bestPositionInHighVariance.Value > 0.30,
+            IsAntagonistic = false
+        };
+    }
+
+    private InteractionAnalysisEffect AnalyzeArenaFoodInteraction(List<PirateFeatureRecord> data)
+    {
+        // Analyze food effect by arena
+        var positiveFood = data.Where(d => d.FoodAdjustment > 0 && d.IsWinner.HasValue).ToList();
+        var negativeFood = data.Where(d => d.FoodAdjustment < 0 && d.IsWinner.HasValue).ToList();
+
+        var arenaFoodEffects = new Dictionary<int, double>();
+
+        for (int arenaId = 1; arenaId <= 5; arenaId++)
+        {
+            var arenaPositiveFood = positiveFood.Where(d => d.ArenaId == arenaId).ToList();
+            var arenaNegativeFood = negativeFood.Where(d => d.ArenaId == arenaId).ToList();
+
+            var positiveWinRate = arenaPositiveFood.Any() 
+                ? arenaPositiveFood.Average(d => d.IsWinner == true ? 1.0 : 0.0) 
+                : 0.25;
+            var negativeWinRate = arenaNegativeFood.Any() 
+                ? arenaNegativeFood.Average(d => d.IsWinner == true ? 1.0 : 0.0) 
+                : 0.25;
+
+            arenaFoodEffects[arenaId] = positiveWinRate - negativeWinRate;
+        }
+
+        var maxFoodEffectArena = arenaFoodEffects.OrderByDescending(kvp => kvp.Value).First();
+        var minFoodEffectArena = arenaFoodEffects.OrderBy(kvp => kvp.Value).First();
+        var avgFoodEffect = arenaFoodEffects.Values.Average();
+
+        return new InteractionAnalysisEffect
+        {
+            Name = "Arena-Food Interaction",
+            Description = $"Food effect varies by arena. Strongest in Arena {maxFoodEffectArena.Key} ({maxFoodEffectArena.Value:P1}), weakest in Arena {minFoodEffectArena.Key} ({minFoodEffectArena.Value:P1})",
+            InteractionStrength = maxFoodEffectArena.Value - minFoodEffectArena.Value,
+            Effect1Alone = avgFoodEffect,
+            CombinedEffect = maxFoodEffectArena.Value,
+            IsSignificant = Math.Abs(maxFoodEffectArena.Value - minFoodEffectArena.Value) > 0.05,
+            IsSynergistic = maxFoodEffectArena.Value > avgFoodEffect * 1.2,
+            IsAntagonistic = minFoodEffectArena.Value < avgFoodEffect * 0.5
+        };
+    }
+
+    private List<InteractionAnalysisEffect> AnalyzeArenaSpecialists(List<PirateFeatureRecord> data)
+    {
+        var effects = new List<InteractionAnalysisEffect>();
+
+        // Find pirates with significantly different win rates in specific arenas
+        var piratesWithEnoughData = data
+            .GroupBy(d => d.PirateId)
+            .Where(g => g.Count() >= 20)  // Need enough data
+            .Select(g => g.Key)
+            .ToList();
+
+        var arenaSpecialists = new List<(int PirateId, int ArenaId, double ArenaWinRate, double OverallWinRate, double Advantage, int ArenaAppearances)>();
+
+        foreach (var pirateId in piratesWithEnoughData)
+        {
+            var pirateData = data.Where(d => d.PirateId == pirateId && d.IsWinner.HasValue).ToList();
+            var overallWinRate = pirateData.Average(d => d.IsWinner == true ? 1.0 : 0.0);
+
+            for (int arenaId = 1; arenaId <= 5; arenaId++)
+            {
+                var arenaData = pirateData.Where(d => d.ArenaId == arenaId).ToList();
+                if (arenaData.Count < 5) continue;  // Need minimum appearances
+
+                var arenaWinRate = arenaData.Average(d => d.IsWinner == true ? 1.0 : 0.0);
+                var advantage = arenaWinRate - overallWinRate;
+
+                if (Math.Abs(advantage) > 0.10)  // 10% difference threshold
+                {
+                    arenaSpecialists.Add((pirateId, arenaId, arenaWinRate, overallWinRate, advantage, arenaData.Count));
+                }
+            }
+        }
+
+        // Report top arena specialists
+        var topSpecialists = arenaSpecialists
+            .OrderByDescending(s => s.Advantage)
+            .Take(5)
+            .ToList();
+
+        var worstArenas = arenaSpecialists
+            .OrderBy(s => s.Advantage)
+            .Take(5)
+            .ToList();
+
+        if (topSpecialists.Any())
+        {
+            var best = topSpecialists.First();
+            effects.Add(new InteractionAnalysisEffect
+            {
+                Name = "Arena Specialists (Positive)",
+                Description = $"Found {topSpecialists.Count} pirates who significantly outperform in specific arenas. Best: Pirate {best.PirateId} in Arena {best.ArenaId} ({best.ArenaWinRate:P1} vs {best.OverallWinRate:P1} overall, +{best.Advantage:P1})",
+                InteractionStrength = topSpecialists.Average(s => s.Advantage),
+                Effect1Alone = topSpecialists.Average(s => s.OverallWinRate),
+                CombinedEffect = topSpecialists.Average(s => s.ArenaWinRate),
+                IsSignificant = true,
+                IsSynergistic = true,
+                IsAntagonistic = false,
+                Group11Count = topSpecialists.Sum(s => s.ArenaAppearances)
+            });
+        }
+
+        if (worstArenas.Any() && worstArenas.First().Advantage < -0.05)
+        {
+            var worst = worstArenas.First();
+            effects.Add(new InteractionAnalysisEffect
+            {
+                Name = "Arena Specialists (Negative)",
+                Description = $"Found {worstArenas.Count(w => w.Advantage < -0.05)} pirates who significantly underperform in specific arenas. Worst: Pirate {worst.PirateId} in Arena {worst.ArenaId} ({worst.ArenaWinRate:P1} vs {worst.OverallWinRate:P1} overall, {worst.Advantage:P1})",
+                InteractionStrength = Math.Abs(worstArenas.Where(w => w.Advantage < -0.05).Average(s => s.Advantage)),
+                Effect1Alone = worstArenas.Average(s => s.OverallWinRate),
+                CombinedEffect = worstArenas.Average(s => s.ArenaWinRate),
+                IsSignificant = true,
+                IsSynergistic = false,
+                IsAntagonistic = true,
+                Group11Count = worstArenas.Sum(s => s.ArenaAppearances)
+            });
+        }
+
+        return effects;
+    }
+
+    private InteractionAnalysisEffect AnalyzeArenaFavoriteInteraction(List<PirateFeatureRecord> data)
+    {
+        // Do favorites (lowest odds) perform differently by arena?
+        var arenaFavoritePerformance = new Dictionary<int, (double FavoriteWinRate, double FavoriteByOddsWinRate, int Count)>();
+
+        for (int arenaId = 1; arenaId <= 5; arenaId++)
+        {
+            var arenaData = data.Where(d => d.ArenaId == arenaId && d.IsWinner.HasValue).ToList();
+            
+            // Group by round to find favorites
+            var rounds = arenaData.GroupBy(d => d.RoundId);
+            var favoriteResults = new List<bool>();
+
+            foreach (var round in rounds)
+            {
+                var favorite = round.OrderBy(p => p.CurrentOdds).First();
+                if (favorite.IsWinner.HasValue)
+                {
+                    favoriteResults.Add(favorite.IsWinner.Value);
+                }
+            }
+
+            var favoriteWinRate = favoriteResults.Any() 
+                ? favoriteResults.Average(w => w ? 1.0 : 0.0) 
+                : 0.25;
+
+            arenaFavoritePerformance[arenaId] = (favoriteWinRate, favoriteWinRate, favoriteResults.Count);
+        }
+
+        var bestArenaForFavorites = arenaFavoritePerformance.OrderByDescending(kvp => kvp.Value.FavoriteWinRate).First();
+        var worstArenaForFavorites = arenaFavoritePerformance.OrderBy(kvp => kvp.Value.FavoriteWinRate).First();
+        var avgFavoriteWinRate = arenaFavoritePerformance.Values.Average(v => v.FavoriteWinRate);
+
+        return new InteractionAnalysisEffect
+        {
+            Name = "Arena-Favorite Interaction",
+            Description = $"Favorites perform best in Arena {bestArenaForFavorites.Key} ({bestArenaForFavorites.Value.FavoriteWinRate:P1}), worst in Arena {worstArenaForFavorites.Key} ({worstArenaForFavorites.Value.FavoriteWinRate:P1}). Avg: {avgFavoriteWinRate:P1}",
+            InteractionStrength = bestArenaForFavorites.Value.FavoriteWinRate - worstArenaForFavorites.Value.FavoriteWinRate,
+            Effect1Alone = avgFavoriteWinRate,
+            CombinedEffect = bestArenaForFavorites.Value.FavoriteWinRate,
+            IsSignificant = Math.Abs(bestArenaForFavorites.Value.FavoriteWinRate - worstArenaForFavorites.Value.FavoriteWinRate) > 0.08,
+            IsSynergistic = bestArenaForFavorites.Value.FavoriteWinRate > avgFavoriteWinRate * 1.1,
+            IsAntagonistic = worstArenaForFavorites.Value.FavoriteWinRate < avgFavoriteWinRate * 0.9
+        };
+    }
+
+    #endregion
+
+    #region Display Methods
+
+    private void DisplayArenaAnalysis(List<PirateFeatureRecord> data, List<InteractionAnalysisEffect> arenaEffects)
+    {
+        Console.WriteLine("\n═══════════════════════════════════════════════════");
+        Console.WriteLine("🏟️ ARENA-SPECIFIC ANALYSIS");
+        Console.WriteLine("═══════════════════════════════════════════════════\n");
+
+        // Per-arena summary
+        Console.WriteLine("📊 Win Rate by Arena:");
+        Console.WriteLine($"   {"Arena",-8} {"Win Rate",-12} {"Favorite Win%",-15} {"Avg Strength",-15} {"Rounds"}");
+        Console.WriteLine($"   {new string('─', 60)}");
+
+        for (int arenaId = 1; arenaId <= 5; arenaId++)
+        {
+            var arenaData = data.Where(d => d.ArenaId == arenaId && d.IsWinner.HasValue).ToList();
+            var rounds = arenaData.Select(d => d.RoundId).Distinct().Count();
+            var avgStrength = arenaData.Any() ? arenaData.Average(d => d.Strength) : 0;
+            
+            // Calculate favorite win rate
+            var favoriteWins = 0;
+            var totalRounds = 0;
+            foreach (var round in arenaData.GroupBy(d => d.RoundId))
+            {
+                var favorite = round.OrderBy(p => p.CurrentOdds).First();
+                if (favorite.IsWinner == true) favoriteWins++;
+                totalRounds++;
+            }
+            var favoriteWinRate = totalRounds > 0 ? (double)favoriteWins / totalRounds : 0;
+
+            // Overall win rate (should be ~25% for random)
+            var winRate = arenaData.Any() ? arenaData.Average(d => d.IsWinner == true ? 1.0 : 0.0) : 0;
+
+            Console.WriteLine($"   Arena {arenaId,-3} {winRate:P1,-12} {favoriteWinRate:P1,-15} {avgStrength:F1,-15} {rounds}");
+        }
+
+        Console.WriteLine();
+
+        // Position analysis by arena
+        Console.WriteLine("📊 Position Win Rates by Arena:");
+        Console.WriteLine($"   {"Arena",-8} {"Pos 0",-10} {"Pos 1",-10} {"Pos 2",-10} {"Pos 3",-10} {"Best Pos"}");
+        Console.WriteLine($"   {new string('─', 60)}");
+
+        for (int arenaId = 1; arenaId <= 5; arenaId++)
+        {
+            var arenaData = data.Where(d => d.ArenaId == arenaId && d.IsWinner.HasValue).ToList();
+            var posWinRates = new double[4];
+            
+            for (int pos = 0; pos < 4; pos++)
+            {
+                var posData = arenaData.Where(d => d.Position == pos).ToList();
+                posWinRates[pos] = posData.Any() ? posData.Average(d => d.IsWinner == true ? 1.0 : 0.0) : 0.25;
+            }
+
+            var bestPos = Array.IndexOf(posWinRates, posWinRates.Max());
+
+            Console.WriteLine($"   Arena {arenaId,-3} {posWinRates[0]:P1,-10} {posWinRates[1]:P1,-10} {posWinRates[2]:P1,-10} {posWinRates[3]:P1,-10} {bestPos}");
+        }
+
+        Console.WriteLine();
+
+        // Display arena-specific interaction effects
+        Console.WriteLine("📊 Arena Interaction Effects:");
+        foreach (var effect in arenaEffects.Where(e => e != null))
+        {
+            var symbol = effect.IsSynergistic ? "🟢" : (effect.IsAntagonistic ? "🔴" : "⚪");
+            var sigMarker = effect.IsSignificant ? "***" : "";
+            Console.WriteLine($"   {symbol} {effect.Name} {sigMarker}");
+            Console.WriteLine($"      {effect.Description}");
+            Console.WriteLine($"      Strength: {effect.InteractionStrength:F4}");
+            Console.WriteLine();
+        }
+    }
+
+    private void DisplayInteractionResults(InteractionAnalysisReport report)
+    {
+        Console.WriteLine("\n═══════════════════════════════════════════════════");
+        Console.WriteLine("🔬 INTERACTION EFFECT ANALYSIS RESULTS");
+        Console.WriteLine("═══════════════════════════════════════════════════\n");
+
+        Console.WriteLine($"Total records analyzed: {report.TotalRecords:N0}");
+        Console.WriteLine($"Total interactions found: {report.Interactions.Count}");
+        Console.WriteLine($"   🔴 Antagonistic (significant): {report.AntagonisticInteractions.Count}");
+        Console.WriteLine($"   🟢 Synergistic (significant): {report.SynergisticInteractions.Count}");
+        Console.WriteLine($"   ⚪ Neutral/Non-significant: {report.NeutralInteractions.Count}");
+        Console.WriteLine();
+
+        if (report.AntagonisticInteractions.Any())
+        {
+            Console.WriteLine("🔴 ANTAGONISTIC INTERACTIONS (Combined effect < expected):");
+            foreach (var effect in report.AntagonisticInteractions.OrderByDescending(e => Math.Abs(e.InteractionStrength)))
+            {
+                Console.WriteLine($"   • {effect.Name}");
+                Console.WriteLine($"     {effect.Description}");
+                Console.WriteLine($"     Strength: {effect.InteractionStrength:F4}, Effect1: {effect.Effect1Alone:P1}, Effect2: {effect.Effect2Alone:P1}, Combined: {effect.CombinedEffect:P1}");
+                Console.WriteLine();
+            }
+        }
+
+        if (report.SynergisticInteractions.Any())
+        {
+            Console.WriteLine("🟢 SYNERGISTIC INTERACTIONS (Combined effect > expected):");
+            foreach (var effect in report.SynergisticInteractions.OrderByDescending(e => e.InteractionStrength))
+            {
+                Console.WriteLine($"   • {effect.Name}");
+                Console.WriteLine($"     {effect.Description}");
+                Console.WriteLine($"     Strength: {effect.InteractionStrength:F4}, Effect1: {effect.Effect1Alone:P1}, Effect2: {effect.Effect2Alone:P1}, Combined: {effect.CombinedEffect:P1}");
+                Console.WriteLine();
+            }
+        }
+    }
+
+    #endregion
+
+    #region Original Two-Way Interactions
+
+    private InteractionAnalysisEffect AnalyzeFoodPositionInteraction(List<PirateFeatureRecord> data)
+    {
+        // High food + bad position interaction
+        var hasHighFood = data.Where(d => d.FoodAdjustment > 0);
+        var hasBadPosition = data.Where(d => d.Position >= 2);
+        
+        var group00 = data.Where(d => d.FoodAdjustment <= 0 && d.Position < 2 && d.IsWinner.HasValue).ToList();
+        var group10 = data.Where(d => d.FoodAdjustment > 0 && d.Position < 2 && d.IsWinner.HasValue).ToList();
+        var group01 = data.Where(d => d.FoodAdjustment <= 0 && d.Position >= 2 && d.IsWinner.HasValue).ToList();
+        var group11 = data.Where(d => d.FoodAdjustment > 0 && d.Position >= 2 && d.IsWinner.HasValue).ToList();
+
+        var winRate00 = group00.Any() ? group00.Average(d => d.IsWinner == true ? 1.0 : 0.0) : 0;
+        var winRate10 = group10.Any() ? group10.Average(d => d.IsWinner == true ? 1.0 : 0.0) : 0;
+        var winRate01 = group01.Any() ? group01.Average(d => d.IsWinner == true ? 1.0 : 0.0) : 0;
+        var winRate11 = group11.Any() ? group11.Average(d => d.IsWinner == true ? 1.0 : 0.0) : 0;
+
+        var effect1Alone = winRate10 - winRate00;
+        var effect2Alone = winRate01 - winRate00;
+        var expectedAdditive = winRate00 + effect1Alone + effect2Alone;
+        var interactionStrength = winRate11 - expectedAdditive;
+
+        return new InteractionAnalysisEffect
+        {
+            Name = "Food-Position Interaction",
+            Description = "High food bonus combined with bad position (2-3)",
             InteractionStrength = interactionStrength,
-            Effect1Alone = effect1,
-            Effect2Alone = effect2,
-            CombinedEffect = winRate11 - winRate00,
-            ExpectedAdditiveEffect = expectedAdditive - winRate00,
+            Effect1Alone = effect1Alone,
+            Effect2Alone = effect2Alone,
+            CombinedEffect = winRate11,
+            ExpectedAdditiveEffect = expectedAdditive,
             Group00Count = group00.Count,
             Group10Count = group10.Count,
             Group01Count = group01.Count,
@@ -291,168 +512,516 @@ public class InteractionEffectAnalyzer
             WinRate10 = winRate10,
             WinRate01 = winRate01,
             WinRate11 = winRate11,
-            PValue = pValue,
-            IsSignificant = pValue < 0.05 && Math.Abs(interactionStrength) > 0.02,
-            IsAntagonistic = interactionStrength < -0.02 && pValue < 0.05,
-            IsSynergistic = interactionStrength > 0.02 && pValue < 0.05
+            IsSignificant = Math.Abs(interactionStrength) > 0.02 && group11.Count >= 100,
+            IsAntagonistic = interactionStrength < -0.02,
+IsSynergistic = interactionStrength > 0.02
         };
     }
 
-    private async Task<InteractionAnalysisEffect> TestThreeWayInteraction(
-        List<PirateFeatureRecord> data,
-        string name,
-        Func<PirateFeatureRecord, bool> condition1,
-        Func<PirateFeatureRecord, bool> condition2,
-        Func<PirateFeatureRecord, bool> condition3,
-        string description)
+    private InteractionAnalysisEffect AnalyzeFoodFavoriteInteraction(List<PirateFeatureRecord> data)
     {
-        // All three conditions
-        var groupAll = data.Where(f => condition1(f) && condition2(f) && condition3(f)).ToList();
-        var winRateAll = groupAll.Any() ? groupAll.Average(f => f.IsWinner == true ? 1.0 : 0.0) : 0.25;
+        // High food + favorite status interaction
+        var group00 = data.Where(d => d.FoodAdjustment <= 0 && d.CurrentOdds > 3 && d.IsWinner.HasValue).ToList();
+        var group10 = data.Where(d => d.FoodAdjustment > 0 && d.CurrentOdds > 3 && d.IsWinner.HasValue).ToList();
+        var group01 = data.Where(d => d.FoodAdjustment <= 0 && d.CurrentOdds <= 3 && d.IsWinner.HasValue).ToList();
+        var group11 = data.Where(d => d.FoodAdjustment > 0 && d.CurrentOdds <= 3 && d.IsWinner.HasValue).ToList();
 
-        // Baseline: none of the conditions
-        var groupNone = data.Where(f => !condition1(f) && !condition2(f) && !condition3(f)).ToList();
-        var winRateNone = groupNone.Any() ? groupNone.Average(f => f.IsWinner == true ? 1.0 : 0.0) : 0.25;
+        var winRate00 = group00.Any() ? group00.Average(d => d.IsWinner == true ? 1.0 : 0.0) : 0;
+        var winRate10 = group10.Any() ? group10.Average(d => d.IsWinner == true ? 1.0 : 0.0) : 0;
+        var winRate01 = group01.Any() ? group01.Average(d => d.IsWinner == true ? 1.0 : 0.0) : 0;
+        var winRate11 = group11.Any() ? group11.Average(d => d.IsWinner == true ? 1.0 : 0.0) : 0;
 
-        // Individual effects
-        var group1 = data.Where(f => condition1(f) && !condition2(f) && !condition3(f)).ToList();
-        var winRate1 = group1.Any() ? group1.Average(f => f.IsWinner == true ? 1.0 : 0.0) : 0.25;
-
-        var group2 = data.Where(f => !condition1(f) && condition2(f) && !condition3(f)).ToList();
-        var winRate2 = group2.Any() ? group2.Average(f => f.IsWinner == true ? 1.0 : 0.0) : 0.25;
-
-        var group3 = data.Where(f => !condition1(f) && !condition2(f) && condition3(f)).ToList();
-        var winRate3 = group3.Any() ? group3.Average(f => f.IsWinner == true ? 1.0 : 0.0) : 0.25;
-
-        var effect1 = winRate1 - winRateNone;
-        var effect2 = winRate2 - winRateNone;
-        var effect3 = winRate3 - winRateNone;
-
-        var expectedAdditive = winRateNone + effect1 + effect2 + effect3;
-        var interactionStrength = winRateAll - expectedAdditive;
-
-        var n = Math.Max(1, groupAll.Count);
-        var se = Math.Sqrt(winRateAll * (1 - winRateAll) / n + 0.0001);
-        var zScore = Math.Abs(interactionStrength) / se;
-        var pValue = 2 * (1 - NormalCDF(zScore));
-
-        var icon = interactionStrength > 0.03 ? "✅" : interactionStrength < -0.03 ? "⚠️" : "➖";
-        Console.WriteLine($"   {icon} {name}: {interactionStrength:+0.0%;-0.0%} (n={groupAll.Count}, p={pValue:F3})");
+        var effect1Alone = winRate10 - winRate00;
+        var effect2Alone = winRate01 - winRate00;
+        var expectedAdditive = winRate00 + effect1Alone + effect2Alone;
+        var interactionStrength = winRate11 - expectedAdditive;
 
         return new InteractionAnalysisEffect
         {
-            Name = name,
-            Description = description,
+            Name = "Food-Favorite Interaction",
+            Description = "High food bonus combined with favorite status (odds <= 3)",
             InteractionStrength = interactionStrength,
-            Effect1Alone = effect1,
-            Effect2Alone = effect2,
-            CombinedEffect = winRateAll - winRateNone,
-            ExpectedAdditiveEffect = expectedAdditive - winRateNone,
-            Group11Count = groupAll.Count,
-            Group00Count = groupNone.Count,
-            WinRate00 = winRateNone,
-            WinRate11 = winRateAll,
-            PValue = pValue,
-            IsSignificant = pValue < 0.1 && Math.Abs(interactionStrength) > 0.03,
-            IsAntagonistic = interactionStrength < -0.03 && pValue < 0.1,
-            IsSynergistic = interactionStrength > 0.03 && pValue < 0.1,
+            Effect1Alone = effect1Alone,
+            Effect2Alone = effect2Alone,
+            CombinedEffect = winRate11,
+            ExpectedAdditiveEffect = expectedAdditive,
+            Group00Count = group00.Count,
+            Group10Count = group10.Count,
+            Group01Count = group01.Count,
+            Group11Count = group11.Count,
+            WinRate00 = winRate00,
+            WinRate10 = winRate10,
+            WinRate01 = winRate01,
+            WinRate11 = winRate11,
+            IsSignificant = Math.Abs(interactionStrength) > 0.02 && group11.Count >= 100,
+            IsAntagonistic = interactionStrength < -0.02,
+            IsSynergistic = interactionStrength > 0.02
+        };
+    }
+
+    private InteractionAnalysisEffect AnalyzeStrengthPositionInteraction(List<PirateFeatureRecord> data)
+    {
+        var strengthThreshold = data.Select(d => d.Strength).OrderByDescending(s => s).Skip(data.Count / 4).First();
+
+        var group00 = data.Where(d => d.Strength < strengthThreshold && d.Position < 2 && d.IsWinner.HasValue).ToList();
+        var group10 = data.Where(d => d.Strength >= strengthThreshold && d.Position < 2 && d.IsWinner.HasValue).ToList();
+        var group01 = data.Where(d => d.Strength < strengthThreshold && d.Position >= 2 && d.IsWinner.HasValue).ToList();
+        var group11 = data.Where(d => d.Strength >= strengthThreshold && d.Position >= 2 && d.IsWinner.HasValue).ToList();
+
+        var winRate00 = group00.Any() ? group00.Average(d => d.IsWinner == true ? 1.0 : 0.0) : 0;
+        var winRate10 = group10.Any() ? group10.Average(d => d.IsWinner == true ? 1.0 : 0.0) : 0;
+        var winRate01 = group01.Any() ? group01.Average(d => d.IsWinner == true ? 1.0 : 0.0) : 0;
+        var winRate11 = group11.Any() ? group11.Average(d => d.IsWinner == true ? 1.0 : 0.0) : 0;
+
+        var effect1Alone = winRate10 - winRate00;
+        var effect2Alone = winRate01 - winRate00;
+        var expectedAdditive = winRate00 + effect1Alone + effect2Alone;
+        var interactionStrength = winRate11 - expectedAdditive;
+
+        return new InteractionAnalysisEffect
+        {
+            Name = "Strength-Position Interaction",
+            Description = "High strength combined with bad position (2-3)",
+            InteractionStrength = interactionStrength,
+            Effect1Alone = effect1Alone,
+            Effect2Alone = effect2Alone,
+            CombinedEffect = winRate11,
+            ExpectedAdditiveEffect = expectedAdditive,
+            Group00Count = group00.Count,
+            Group10Count = group10.Count,
+            Group01Count = group01.Count,
+            Group11Count = group11.Count,
+            WinRate00 = winRate00,
+            WinRate10 = winRate10,
+            WinRate01 = winRate01,
+            WinRate11 = winRate11,
+            IsSignificant = Math.Abs(interactionStrength) > 0.02 && group11.Count >= 100,
+            IsAntagonistic = interactionStrength < -0.02,
+            IsSynergistic = interactionStrength > 0.02
+        };
+    }
+
+    private InteractionAnalysisEffect AnalyzeStrengthWeakRivalsInteraction(List<PirateFeatureRecord> data)
+    {
+        var strengthThreshold = data.Select(d => d.Strength).OrderByDescending(s => s).Skip(data.Count / 4).First();
+        var avgRivalStrengthMedian = data.Select(d => d.AvgRivalStrength).OrderBy(s => s).Skip(data.Count / 2).First();
+
+        var group00 = data.Where(d => d.Strength < strengthThreshold && d.AvgRivalStrength >= avgRivalStrengthMedian && d.IsWinner.HasValue).ToList();
+        var group10 = data.Where(d => d.Strength >= strengthThreshold && d.AvgRivalStrength >= avgRivalStrengthMedian && d.IsWinner.HasValue).ToList();
+        var group01 = data.Where(d => d.Strength < strengthThreshold && d.AvgRivalStrength < avgRivalStrengthMedian && d.IsWinner.HasValue).ToList();
+        var group11 = data.Where(d => d.Strength >= strengthThreshold && d.AvgRivalStrength < avgRivalStrengthMedian && d.IsWinner.HasValue).ToList();
+
+        var winRate00 = group00.Any() ? group00.Average(d => d.IsWinner == true ? 1.0 : 0.0) : 0;
+        var winRate10 = group10.Any() ? group10.Average(d => d.IsWinner == true ? 1.0 : 0.0) : 0;
+        var winRate01 = group01.Any() ? group01.Average(d => d.IsWinner == true ? 1.0 : 0.0) : 0;
+        var winRate11 = group11.Any() ? group11.Average(d => d.IsWinner == true ? 1.0 : 0.0) : 0;
+
+        var effect1Alone = winRate10 - winRate00;
+        var effect2Alone = winRate01 - winRate00;
+        var expectedAdditive = winRate00 + effect1Alone + effect2Alone;
+        var interactionStrength = winRate11 - expectedAdditive;
+
+        return new InteractionAnalysisEffect
+        {
+            Name = "Strength-WeakRivals Interaction",
+            Description = "High strength combined with weak rivals (below median)",
+            InteractionStrength = interactionStrength,
+            Effect1Alone = effect1Alone,
+            Effect2Alone = effect2Alone,
+            CombinedEffect = winRate11,
+            ExpectedAdditiveEffect = expectedAdditive,
+            Group00Count = group00.Count,
+            Group10Count = group10.Count,
+            Group01Count = group01.Count,
+            Group11Count = group11.Count,
+            WinRate00 = winRate00,
+            WinRate10 = winRate10,
+            WinRate01 = winRate01,
+            WinRate11 = winRate11,
+            IsSignificant = Math.Abs(interactionStrength) > 0.02 && group11.Count >= 100,
+            IsAntagonistic = interactionStrength < -0.02,
+            IsSynergistic = interactionStrength > 0.02
+        };
+    }
+
+    private InteractionAnalysisEffect AnalyzeFavoriteInexperiencedInteraction(List<PirateFeatureRecord> data)
+    {
+        var histWinRateMedian = data.Select(d => d.HistoricalWinRate).OrderBy(s => s).Skip(data.Count / 2).First();
+
+        var group00 = data.Where(d => d.CurrentOdds > 3 && d.HistoricalWinRate >= histWinRateMedian && d.IsWinner.HasValue).ToList();
+        var group10 = data.Where(d => d.CurrentOdds <= 3 && d.HistoricalWinRate >= histWinRateMedian && d.IsWinner.HasValue).ToList();
+        var group01 = data.Where(d => d.CurrentOdds > 3 && d.HistoricalWinRate < histWinRateMedian && d.IsWinner.HasValue).ToList();
+        var group11 = data.Where(d => d.CurrentOdds <= 3 && d.HistoricalWinRate < histWinRateMedian && d.IsWinner.HasValue).ToList();
+
+        var winRate00 = group00.Any() ? group00.Average(d => d.IsWinner == true ? 1.0 : 0.0) : 0;
+        var winRate10 = group10.Any() ? group10.Average(d => d.IsWinner == true ? 1.0 : 0.0) : 0;
+        var winRate01 = group01.Any() ? group01.Average(d => d.IsWinner == true ? 1.0 : 0.0) : 0;
+        var winRate11 = group11.Any() ? group11.Average(d => d.IsWinner == true ? 1.0 : 0.0) : 0;
+
+        var effect1Alone = winRate10 - winRate00;
+        var effect2Alone = winRate01 - winRate00;
+        var expectedAdditive = winRate00 + effect1Alone + effect2Alone;
+        var interactionStrength = winRate11 - expectedAdditive;
+
+        return new InteractionAnalysisEffect
+        {
+            Name = "Favorite-Inexperienced Interaction",
+            Description = "Favorite status combined with low historical win rate",
+            InteractionStrength = interactionStrength,
+            Effect1Alone = effect1Alone,
+            Effect2Alone = effect2Alone,
+            CombinedEffect = winRate11,
+            ExpectedAdditiveEffect = expectedAdditive,
+            Group00Count = group00.Count,
+            Group10Count = group10.Count,
+            Group01Count = group01.Count,
+            Group11Count = group11.Count,
+            WinRate00 = winRate00,
+            WinRate10 = winRate10,
+            WinRate01 = winRate01,
+            WinRate11 = winRate11,
+            IsSignificant = Math.Abs(interactionStrength) > 0.02 && group11.Count >= 50,
+            IsAntagonistic = interactionStrength < -0.02,
+            IsSynergistic = interactionStrength > 0.02
+        };
+    }
+
+    private InteractionAnalysisEffect AnalyzeLowStrengthFavoriteInteraction(List<PirateFeatureRecord> data)
+    {
+        var strengthMedian = data.Select(d => d.Strength).OrderBy(s => s).Skip(data.Count / 2).First();
+
+        var group00 = data.Where(d => d.Strength >= strengthMedian && d.CurrentOdds > 3 && d.IsWinner.HasValue).ToList();
+        var group10 = data.Where(d => d.Strength < strengthMedian && d.CurrentOdds > 3 && d.IsWinner.HasValue).ToList();
+        var group01 = data.Where(d => d.Strength >= strengthMedian && d.CurrentOdds <= 3 && d.IsWinner.HasValue).ToList();
+        var group11 = data.Where(d => d.Strength < strengthMedian && d.CurrentOdds <= 3 && d.IsWinner.HasValue).ToList();
+
+        var winRate00 = group00.Any() ? group00.Average(d => d.IsWinner == true ? 1.0 : 0.0) : 0;
+        var winRate10 = group10.Any() ? group10.Average(d => d.IsWinner == true ? 1.0 : 0.0) : 0;
+        var winRate01 = group01.Any() ? group01.Average(d => d.IsWinner == true ? 1.0 : 0.0) : 0;
+        var winRate11 = group11.Any() ? group11.Average(d => d.IsWinner == true ? 1.0 : 0.0) : 0;
+
+        var effect1Alone = winRate10 - winRate00;
+        var effect2Alone = winRate01 - winRate00;
+        var expectedAdditive = winRate00 + effect1Alone + effect2Alone;
+        var interactionStrength = winRate11 - expectedAdditive;
+
+        return new InteractionAnalysisEffect
+        {
+            Name = "LowStrength-Favorite Interaction",
+            Description = "Low strength (below median) combined with favorite status",
+            InteractionStrength = interactionStrength,
+            Effect1Alone = effect1Alone,
+            Effect2Alone = effect2Alone,
+            CombinedEffect = winRate11,
+            ExpectedAdditiveEffect = expectedAdditive,
+            Group00Count = group00.Count,
+            Group10Count = group10.Count,
+            Group01Count = group01.Count,
+            Group11Count = group11.Count,
+            WinRate00 = winRate00,
+            WinRate10 = winRate10,
+            WinRate01 = winRate01,
+            WinRate11 = winRate11,
+            IsSignificant = Math.Abs(interactionStrength) > 0.02 && group11.Count >= 50,
+            IsAntagonistic = interactionStrength < -0.02,
+            IsSynergistic = interactionStrength > 0.02
+        };
+    }
+
+    private InteractionAnalysisEffect AnalyzeUndervaluedStrongInteraction(List<PirateFeatureRecord> data)
+    {
+        // Strong pirate with high odds (undervalued)
+        var strengthThreshold = data.Select(d => d.Strength).OrderByDescending(s => s).Skip(data.Count / 4).First();
+
+        var group00 = data.Where(d => d.Strength < strengthThreshold && d.CurrentOdds <= 5 && d.IsWinner.HasValue).ToList();
+        var group10 = data.Where(d => d.Strength >= strengthThreshold && d.CurrentOdds <= 5 && d.IsWinner.HasValue).ToList();
+        var group01 = data.Where(d => d.Strength < strengthThreshold && d.CurrentOdds > 5 && d.IsWinner.HasValue).ToList();
+        var group11 = data.Where(d => d.Strength >= strengthThreshold && d.CurrentOdds > 5 && d.IsWinner.HasValue).ToList();
+
+        var winRate00 = group00.Any() ? group00.Average(d => d.IsWinner == true ? 1.0 : 0.0) : 0;
+        var winRate10 = group10.Any() ? group10.Average(d => d.IsWinner == true ? 1.0 : 0.0) : 0;
+        var winRate01 = group01.Any() ? group01.Average(d => d.IsWinner == true ? 1.0 : 0.0) : 0;
+        var winRate11 = group11.Any() ? group11.Average(d => d.IsWinner == true ? 1.0 : 0.0) : 0;
+
+        var effect1Alone = winRate10 - winRate00;
+        var effect2Alone = winRate01 - winRate00;
+        var expectedAdditive = winRate00 + effect1Alone + effect2Alone;
+        var interactionStrength = winRate11 - expectedAdditive;
+
+        return new InteractionAnalysisEffect
+        {
+            Name = "Undervalued-Strong Interaction",
+            Description = "High strength combined with high odds (>5:1, undervalued by market)",
+            InteractionStrength = interactionStrength,
+            Effect1Alone = effect1Alone,
+            Effect2Alone = effect2Alone,
+            CombinedEffect = winRate11,
+            ExpectedAdditiveEffect = expectedAdditive,
+            Group00Count = group00.Count,
+            Group10Count = group10.Count,
+            Group01Count = group01.Count,
+            Group11Count = group11.Count,
+            WinRate00 = winRate00,
+            WinRate10 = winRate10,
+            WinRate01 = winRate01,
+            WinRate11 = winRate11,
+            IsSignificant = Math.Abs(interactionStrength) > 0.02 && group11.Count >= 50,
+            IsAntagonistic = interactionStrength < -0.02,
+            IsSynergistic = interactionStrength > 0.02
+        };
+    }
+
+    private InteractionAnalysisEffect AnalyzeArenaSpecialistModerateOddsInteraction(List<PirateFeatureRecord> data)
+    {
+        // Arena specialist (high arena win rate) with moderate odds
+        var arenaWinRateThreshold = data.Select(d => d.ArenaWinRate).OrderByDescending(s => s).Skip(data.Count / 4).First();
+
+        var group00 = data.Where(d => d.ArenaWinRate < arenaWinRateThreshold && (d.CurrentOdds <= 3 || d.CurrentOdds > 7) && d.IsWinner.HasValue).ToList();
+        var group10 = data.Where(d => d.ArenaWinRate >= arenaWinRateThreshold && (d.CurrentOdds <= 3 || d.CurrentOdds > 7) && d.IsWinner.HasValue).ToList();
+        var group01 = data.Where(d => d.ArenaWinRate < arenaWinRateThreshold && d.CurrentOdds > 3 && d.CurrentOdds <= 7 && d.IsWinner.HasValue).ToList();
+        var group11 = data.Where(d => d.ArenaWinRate >= arenaWinRateThreshold && d.CurrentOdds > 3 && d.CurrentOdds <= 7 && d.IsWinner.HasValue).ToList();
+
+        var winRate00 = group00.Any() ? group00.Average(d => d.IsWinner == true ? 1.0 : 0.0) : 0;
+        var winRate10 = group10.Any() ? group10.Average(d => d.IsWinner == true ? 1.0 : 0.0) : 0;
+        var winRate01 = group01.Any() ? group01.Average(d => d.IsWinner == true ? 1.0 : 0.0) : 0;
+        var winRate11 = group11.Any() ? group11.Average(d => d.IsWinner == true ? 1.0 : 0.0) : 0;
+
+        var effect1Alone = winRate10 - winRate00;
+        var effect2Alone = winRate01 - winRate00;
+        var expectedAdditive = winRate00 + effect1Alone + effect2Alone;
+        var interactionStrength = winRate11 - expectedAdditive;
+
+        return new InteractionAnalysisEffect
+        {
+            Name = "ArenaSpecialist-ModerateOdds Interaction",
+            Description = "High arena win rate combined with moderate odds (3-7:1)",
+            InteractionStrength = interactionStrength,
+            Effect1Alone = effect1Alone,
+            Effect2Alone = effect2Alone,
+            CombinedEffect = winRate11,
+            ExpectedAdditiveEffect = expectedAdditive,
+            Group00Count = group00.Count,
+            Group10Count = group10.Count,
+            Group01Count = group01.Count,
+            Group11Count = group11.Count,
+            WinRate00 = winRate00,
+            WinRate10 = winRate10,
+            WinRate01 = winRate01,
+            WinRate11 = winRate11,
+            IsSignificant = Math.Abs(interactionStrength) > 0.02 && group11.Count >= 50,
+            IsAntagonistic = interactionStrength < -0.02,
+            IsSynergistic = interactionStrength > 0.02
+        };
+    }
+
+    private InteractionAnalysisEffect AnalyzeHotStreakBeatsRivalsInteraction(List<PirateFeatureRecord> data)
+    {
+        // Hot streak (high recent win rate) combined with good record vs current rivals
+        var recentWinRateThreshold = data.Select(d => d.RecentWinRate).OrderByDescending(s => s).Skip(data.Count / 4).First();
+        var rivalWinRateThreshold = data.Select(d => d.WinRateVsCurrentRivals).OrderByDescending(s => s).Skip(data.Count / 4).First();
+
+        var group00 = data.Where(d => d.RecentWinRate < recentWinRateThreshold && d.WinRateVsCurrentRivals < rivalWinRateThreshold && d.IsWinner.HasValue).ToList();
+        var group10 = data.Where(d => d.RecentWinRate >= recentWinRateThreshold && d.WinRateVsCurrentRivals < rivalWinRateThreshold && d.IsWinner.HasValue).ToList();
+        var group01 = data.Where(d => d.RecentWinRate < recentWinRateThreshold && d.WinRateVsCurrentRivals >= rivalWinRateThreshold && d.IsWinner.HasValue).ToList();
+        var group11 = data.Where(d => d.RecentWinRate >= recentWinRateThreshold && d.WinRateVsCurrentRivals >= rivalWinRateThreshold && d.IsWinner.HasValue).ToList();
+
+        var winRate00 = group00.Any() ? group00.Average(d => d.IsWinner == true ? 1.0 : 0.0) : 0;
+        var winRate10 = group10.Any() ? group10.Average(d => d.IsWinner == true ? 1.0 : 0.0) : 0;
+        var winRate01 = group01.Any() ? group01.Average(d => d.IsWinner == true ? 1.0 : 0.0) : 0;
+        var winRate11 = group11.Any() ? group11.Average(d => d.IsWinner == true ? 1.0 : 0.0) : 0;
+
+        var effect1Alone = winRate10 - winRate00;
+        var effect2Alone = winRate01 - winRate00;
+        var expectedAdditive = winRate00 + effect1Alone + effect2Alone;
+        var interactionStrength = winRate11 - expectedAdditive;
+
+        return new InteractionAnalysisEffect
+        {
+            Name = "HotStreak-BeatsRivals Interaction",
+            Description = "High recent win rate combined with good record vs current rivals",
+            InteractionStrength = interactionStrength,
+            Effect1Alone = effect1Alone,
+            Effect2Alone = effect2Alone,
+            CombinedEffect = winRate11,
+            ExpectedAdditiveEffect = expectedAdditive,
+            Group00Count = group00.Count,
+            Group10Count = group10.Count,
+            Group01Count = group01.Count,
+            Group11Count = group11.Count,
+            WinRate00 = winRate00,
+            WinRate10 = winRate10,
+            WinRate01 = winRate01,
+            WinRate11 = winRate11,
+            IsSignificant = Math.Abs(interactionStrength) > 0.02 && group11.Count >= 50,
+            IsAntagonistic = interactionStrength < -0.02,
+            IsSynergistic = interactionStrength > 0.02
+        };
+    }
+
+    private InteractionAnalysisEffect AnalyzeFoodPosition3Interaction(List<PirateFeatureRecord> data)
+    {
+        // Positive food + position 3 (last position) - potential synergy or antagonism
+        var group00 = data.Where(d => d.FoodAdjustment <= 0 && d.Position != 3 && d.IsWinner.HasValue).ToList();
+        var group10 = data.Where(d => d.FoodAdjustment > 0 && d.Position != 3 && d.IsWinner.HasValue).ToList();
+        var group01 = data.Where(d => d.FoodAdjustment <= 0 && d.Position == 3 && d.IsWinner.HasValue).ToList();
+        var group11 = data.Where(d => d.FoodAdjustment > 0 && d.Position == 3 && d.IsWinner.HasValue).ToList();
+
+        var winRate00 = group00.Any() ? group00.Average(d => d.IsWinner == true ? 1.0 : 0.0) : 0;
+        var winRate10 = group10.Any() ? group10.Average(d => d.IsWinner == true ? 1.0 : 0.0) : 0;
+        var winRate01 = group01.Any() ? group01.Average(d => d.IsWinner == true ? 1.0 : 0.0) : 0;
+        var winRate11 = group11.Any() ? group11.Average(d => d.IsWinner == true ? 1.0 : 0.0) : 0;
+
+        var effect1Alone = winRate10 - winRate00;
+        var effect2Alone = winRate01 - winRate00;
+        var expectedAdditive = winRate00 + effect1Alone + effect2Alone;
+        var interactionStrength = winRate11 - expectedAdditive;
+
+        return new InteractionAnalysisEffect
+        {
+            Name = "Food-Position3 Interaction",
+            Description = "Positive food adjustment combined with last position (position 3)",
+            InteractionStrength = interactionStrength,
+            Effect1Alone = effect1Alone,
+            Effect2Alone = effect2Alone,
+            CombinedEffect = winRate11,
+            ExpectedAdditiveEffect = expectedAdditive,
+            Group00Count = group00.Count,
+            Group10Count = group10.Count,
+            Group01Count = group01.Count,
+            Group11Count = group11.Count,
+            WinRate00 = winRate00,
+            WinRate10 = winRate10,
+            WinRate01 = winRate01,
+            WinRate11 = winRate11,
+            IsSignificant = Math.Abs(interactionStrength) > 0.02 && group11.Count >= 50,
+            IsAntagonistic = interactionStrength < -0.02,
+            IsSynergistic = interactionStrength > 0.02
+        };
+    }
+
+    #endregion
+
+    #region Three-Way Interactions
+
+    private InteractionAnalysisEffect AnalyzeFoodPositionStrengthInteraction(List<PirateFeatureRecord> data)
+    {
+        // Three-way: Food + Position + Strength
+        var strengthThreshold = data.Select(d => d.Strength).OrderByDescending(s => s).Skip(data.Count / 4).First();
+
+        // All 8 combinations for 3 binary variables
+        var groups = new Dictionary<string, List<PirateFeatureRecord>>
+        {
+            ["000"] = data.Where(d => d.FoodAdjustment <= 0 && d.Position < 2 && d.Strength < strengthThreshold && d.IsWinner.HasValue).ToList(),
+            ["001"] = data.Where(d => d.FoodAdjustment <= 0 && d.Position < 2 && d.Strength >= strengthThreshold && d.IsWinner.HasValue).ToList(),
+            ["010"] = data.Where(d => d.FoodAdjustment <= 0 && d.Position >= 2 && d.Strength < strengthThreshold && d.IsWinner.HasValue).ToList(),
+            ["011"] = data.Where(d => d.FoodAdjustment <= 0 && d.Position >= 2 && d.Strength >= strengthThreshold && d.IsWinner.HasValue).ToList(),
+            ["100"] = data.Where(d => d.FoodAdjustment > 0 && d.Position < 2 && d.Strength < strengthThreshold && d.IsWinner.HasValue).ToList(),
+            ["101"] = data.Where(d => d.FoodAdjustment > 0 && d.Position < 2 && d.Strength >= strengthThreshold && d.IsWinner.HasValue).ToList(),
+            ["110"] = data.Where(d => d.FoodAdjustment > 0 && d.Position >= 2 && d.Strength < strengthThreshold && d.IsWinner.HasValue).ToList(),
+            ["111"] = data.Where(d => d.FoodAdjustment > 0 && d.Position >= 2 && d.Strength >= strengthThreshold && d.IsWinner.HasValue).ToList()
+        };
+
+        var winRates = groups.ToDictionary(
+            kvp => kvp.Key,
+            kvp => kvp.Value.Any() ? kvp.Value.Average(d => d.IsWinner == true ? 1.0 : 0.0) : 0.25
+        );
+
+        // Calculate three-way interaction effect
+        // E(ABC) = actual_111 - (expected from all lower-order effects)
+        var baseline = winRates["000"];
+        var effectFood = winRates["100"] - baseline;
+        var effectPosition = winRates["010"] - baseline;
+        var effectStrength = winRates["001"] - baseline;
+        
+        var twoWayFP = winRates["110"] - baseline - effectFood - effectPosition;
+var twoWayFS = winRates["101"] - baseline - effectFood - effectStrength;
+        var twoWayPS = winRates["011"] - baseline - effectPosition - effectStrength;
+
+        var expectedThreeWay = baseline + effectFood + effectPosition + effectStrength + twoWayFP + twoWayFS + twoWayPS;
+        var threeWayInteraction = winRates["111"] - expectedThreeWay;
+
+        return new InteractionAnalysisEffect
+        {
+            Name = "Food-Position-Strength 3-Way Interaction",
+            Description = "Three-way interaction between food bonus, bad position, and high strength",
+            InteractionStrength = threeWayInteraction,
+            Effect1Alone = effectFood,
+            Effect2Alone = effectPosition,
+            CombinedEffect = winRates["111"],
+            ExpectedAdditiveEffect = expectedThreeWay,
+            Group00Count = groups["000"].Count,
+            Group10Count = groups["100"].Count,
+            Group01Count = groups["010"].Count,
+            Group11Count = groups["111"].Count,
+            WinRate00 = winRates["000"],
+            WinRate10 = winRates["100"],
+            WinRate01 = winRates["010"],
+            WinRate11 = winRates["111"],
+            IsSignificant = Math.Abs(threeWayInteraction) > 0.03 && groups["111"].Count >= 50,
+            IsAntagonistic = threeWayInteraction < -0.03,
+            IsSynergistic = threeWayInteraction > 0.03,
             IsThreeWay = true
         };
     }
 
-    private void ClassifyInteractions(InteractionAnalysisReport report)
+    private InteractionAnalysisEffect AnalyzeUndervaluedStrongBeatsRivalsInteraction(List<PirateFeatureRecord> data)
     {
-        report.AntagonisticInteractions = report.Interactions
-            .Where(i => i.IsAntagonistic)
-            .OrderBy(i => i.InteractionStrength)
-            .ToList();
+        // Three-way: Undervalued (high odds) + Strong + Beats Rivals
+        var strengthThreshold = data.Select(d => d.Strength).OrderByDescending(s => s).Skip(data.Count / 4).First();
+        var rivalWinRateThreshold = data.Select(d => d.WinRateVsCurrentRivals).OrderByDescending(s => s).Skip(data.Count / 3).First();
 
-        report.SynergisticInteractions = report.Interactions
-            .Where(i => i.IsSynergistic)
-            .OrderByDescending(i => i.InteractionStrength)
-            .ToList();
-
-        report.NeutralInteractions = report.Interactions
-            .Where(i => !i.IsAntagonistic && !i.IsSynergistic)
-            .ToList();
-    }
-
-    private void DisplayInteractionReport(InteractionAnalysisReport report)
-    {
-        Console.WriteLine("\n═══════════════════════════════════════════════════");
-        Console.WriteLine("📊 INTERACTION ANALYSIS SUMMARY");
-        Console.WriteLine("═══════════════════════════════════════════════════\n");
-
-        Console.WriteLine("⚠️ ANTAGONISTIC INTERACTIONS (factors cancel out):");
-        Console.WriteLine("   Use these to REDUCE predicted probability\n");
-        foreach (var interaction in report.AntagonisticInteractions.Take(10))
+        var groups = new Dictionary<string, List<PirateFeatureRecord>>
         {
-            Console.WriteLine($"   ❌ {interaction.Name}");
-            Console.WriteLine(
-                $"      Effect: {interaction.InteractionStrength:+0.0%;-0.0%} | p={interaction.PValue:F3}");
-            Console.WriteLine($"      {interaction.Description}");
-            Console.WriteLine(
-                $"      Individual effects: {interaction.Effect1Alone:+0.0%;-0.0%} + {interaction.Effect2Alone:+0.0%;-0.0%}");
-            Console.WriteLine(
-                $"      Combined actual: {interaction.CombinedEffect:+0.0%;-0.0%} (expected: {interaction.ExpectedAdditiveEffect:+0.0%;-0.0%})");
-            Console.WriteLine();
-        }
+            ["000"] = data.Where(d => d.CurrentOdds <= 5 && d.Strength < strengthThreshold && d.WinRateVsCurrentRivals < rivalWinRateThreshold && d.IsWinner.HasValue).ToList(),
+            ["001"] = data.Where(d => d.CurrentOdds <= 5 && d.Strength < strengthThreshold && d.WinRateVsCurrentRivals >= rivalWinRateThreshold && d.IsWinner.HasValue).ToList(),
+            ["010"] = data.Where(d => d.CurrentOdds <= 5 && d.Strength >= strengthThreshold && d.WinRateVsCurrentRivals < rivalWinRateThreshold && d.IsWinner.HasValue).ToList(),
+            ["011"] = data.Where(d => d.CurrentOdds <= 5 && d.Strength >= strengthThreshold && d.WinRateVsCurrentRivals >= rivalWinRateThreshold && d.IsWinner.HasValue).ToList(),
+            ["100"] = data.Where(d => d.CurrentOdds > 5 && d.Strength < strengthThreshold && d.WinRateVsCurrentRivals < rivalWinRateThreshold && d.IsWinner.HasValue).ToList(),
+            ["101"] = data.Where(d => d.CurrentOdds > 5 && d.Strength < strengthThreshold && d.WinRateVsCurrentRivals >= rivalWinRateThreshold && d.IsWinner.HasValue).ToList(),
+            ["110"] = data.Where(d => d.CurrentOdds > 5 && d.Strength >= strengthThreshold && d.WinRateVsCurrentRivals < rivalWinRateThreshold && d.IsWinner.HasValue).ToList(),
+            ["111"] = data.Where(d => d.CurrentOdds > 5 && d.Strength >= strengthThreshold && d.WinRateVsCurrentRivals >= rivalWinRateThreshold && d.IsWinner.HasValue).ToList()
+        };
 
-        Console.WriteLine("\n✅ SYNERGISTIC INTERACTIONS (factors amplify each other):");
-        Console.WriteLine("   Use these to INCREASE predicted probability\n");
-        foreach (var interaction in report.SynergisticInteractions.Take(10))
+        var winRates = groups.ToDictionary(
+            kvp => kvp.Key,
+            kvp => kvp.Value.Any() ? kvp.Value.Average(d => d.IsWinner == true ? 1.0 : 0.0) : 0.25
+        );
+
+        var baseline = winRates["000"];
+        var effectUndervalued = winRates["100"] - baseline;
+        var effectStrong = winRates["010"] - baseline;
+        var effectBeatsRivals = winRates["001"] - baseline;
+
+        var twoWayUS = winRates["110"] - baseline - effectUndervalued - effectStrong;
+        var twoWayUB = winRates["101"] - baseline - effectUndervalued - effectBeatsRivals;
+        var twoWaySB = winRates["011"] - baseline - effectStrong - effectBeatsRivals;
+
+        var expectedThreeWay = baseline + effectUndervalued + effectStrong + effectBeatsRivals + twoWayUS + twoWayUB + twoWaySB;
+        var threeWayInteraction = winRates["111"] - expectedThreeWay;
+
+        return new InteractionAnalysisEffect
         {
-            Console.WriteLine($"   ✅ {interaction.Name}");
-            Console.WriteLine(
-                $"      Effect: {interaction.InteractionStrength:+0.0%;-0.0%} | p={interaction.PValue:F3}");
-            Console.WriteLine($"      {interaction.Description}");
-            Console.WriteLine(
-                $"      Individual effects: {interaction.Effect1Alone:+0.0%;-0.0%} + {interaction.Effect2Alone:+0.0%;-0.0%}");
-            Console.WriteLine(
-                $"      Combined actual: {interaction.CombinedEffect:+0.0%;-0.0%} (expected: {interaction.ExpectedAdditiveEffect:+0.0%;-0.0%})");
-            Console.WriteLine();
-        }
-
-        Console.WriteLine("\n📋 RECOMMENDED MODEL ADJUSTMENTS:");
-        Console.WriteLine("═══════════════════════════════════════════════════\n");
-
-        if (report.AntagonisticInteractions.Any())
-        {
-            Console.WriteLine("   PENALTY FEATURES (reduce probability when present):");
-            foreach (var ant in report.AntagonisticInteractions.Take(5))
-                Console.WriteLine($"   • {ant.Name}_Penalty = {Math.Abs(ant.InteractionStrength):P1}");
-        }
-
-        if (report.SynergisticInteractions.Any())
-        {
-            Console.WriteLine("\n   BONUS FEATURES (increase probability when present):");
-            foreach (var syn in report.SynergisticInteractions.Take(5))
-                Console.WriteLine($"   • {syn.Name}_Bonus = {syn.InteractionStrength:P1}");
-        }
+            Name = "Undervalued-Strong-BeatsRivals 3-Way Interaction",
+            Description = "Three-way: High odds (undervalued) + High strength + Good record vs rivals",
+            InteractionStrength = threeWayInteraction,
+            Effect1Alone = effectUndervalued,
+            Effect2Alone = effectStrong,
+            CombinedEffect = winRates["111"],
+            ExpectedAdditiveEffect = expectedThreeWay,
+            Group00Count = groups["000"].Count,
+            Group10Count = groups["100"].Count,
+            Group01Count = groups["010"].Count,
+            Group11Count = groups["111"].Count,
+            WinRate00 = winRates["000"],
+            WinRate10 = winRates["100"],
+            WinRate01 = winRates["010"],
+            WinRate11 = winRates["111"],
+            IsSignificant = Math.Abs(threeWayInteraction) > 0.03 && groups["111"].Count >= 30,
+            IsAntagonistic = threeWayInteraction < -0.03,
+            IsSynergistic = threeWayInteraction > 0.03,
+            IsThreeWay = true
+        };
     }
 
-    private void SaveInteractionReport(InteractionAnalysisReport report)
-    {
-        Directory.CreateDirectory("Reports");
-        var fileName = Path.Combine("Reports", $"interaction_analysis_{DateTime.UtcNow:yyyyMMdd_HHmmss}.json");
-        var json = JsonSerializer.Serialize(report, new JsonSerializerOptions { WriteIndented = true });
-        File.WriteAllText(fileName, json);
-        Console.WriteLine($"\n📄 Interaction analysis saved to {fileName}");
-    }
-
-    private double NormalCDF(double x)
-    {
-        return 0.5 * (1 + Erf(x / Math.Sqrt(2)));
-    }
-
-    private double Erf(double x)
-    {
-        double a1 = 0.254829592, a2 = -0.284496736, a3 = 1.421413741;
-        double a4 = -1.453152027, a5 = 1.061405429, p = 0.3275911;
-        var sign = x < 0 ? -1 : 1;
-        x = Math.Abs(x);
-        var t = 1.0 / (1.0 + p * x);
-        var y = 1.0 - ((((a5 * t + a4) * t + a3) * t + a2) * t + a1) * t * Math.Exp(-x * x);
-        return sign * y;
-    }
+    #endregion
 }

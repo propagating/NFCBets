@@ -26,7 +26,8 @@ public class LearnToRank : IMlStrategy
 
         Console.WriteLine($"   Training {StrategyName}...");
 
-        if (_interactionReport != null) Console.WriteLine("      Applying interaction controls");
+        if (_interactionReport != null) 
+            Console.WriteLine("      Applying interaction controls");
 
         var rankingData = ConvertToRankingFormat(trainingData);
 
@@ -49,11 +50,7 @@ public class LearnToRank : IMlStrategy
                 nameof(RankingFeature.InteractionPenalty),
                 nameof(RankingFeature.InteractionBonus))
             .Append(_mlContext.Transforms.NormalizeMinMax("Features"))
-            .Append(_mlContext.Ranking.Trainers.LightGbm(
-                nameof(RankingFeature.Label),
-                "Features",
-                nameof(RankingFeature.GroupId),
-                numberOfLeaves: 31,
+            .Append(_mlContext.Ranking.Trainers.LightGbm(numberOfLeaves: 31,
                 minimumExampleCountPerLeaf: 20,
                 learningRate: 0.1,
                 numberOfIterations: 100));
@@ -141,7 +138,7 @@ public class LearnToRank : IMlStrategy
         return new ModelEvaluationReport
         {
             Accuracy = accuracy,
-            AUC = auc,
+            Auc = auc,
             F1Score = accuracy * 0.5,
             TestDataSize = testData.Count,
             LogLoss = logLoss
@@ -181,6 +178,11 @@ public class LearnToRank : IMlStrategy
     {
         var result = new List<RankingFeature>();
 
+        // Pre-compute grouped data for feature conversion
+        var groupedByRoundArena = data
+            .GroupBy(f => (f.RoundId, f.ArenaId))
+            .ToDictionary(g => g.Key, g => g.ToList());
+
         var roundGroups = data.GroupBy(f => (f.RoundId, f.ArenaId));
 
         foreach (var round in roundGroups)
@@ -203,16 +205,12 @@ public class LearnToRank : IMlStrategy
             {
                 var pirate = pirates[i];
 
-                // Calculate interaction features
-                var mlFeature = new MlPirateFeature();
-                InteractionCalculator.ApplyInteractionFeatures(mlFeature, pirate, _interactionReport);
+                // Calculate interaction features using new property names
+                var mlFeature = FeatureConversionHelper.ConvertSingle(
+                    pirate, groupedByRoundArena, _interactionReport);
 
-                var penalty = mlFeature.Penalty_FoodPosition + mlFeature.Penalty_FoodFavorite +
-                              mlFeature.Penalty_StrengthPosition + mlFeature.Penalty_StrengthWeakRivals +
-                              mlFeature.Penalty_FavoriteInexperienced + mlFeature.Penalty_LowStrengthFavorite;
-
-                var bonus = mlFeature.Bonus_UndervaluedStrong + mlFeature.Bonus_HotStreakBeatsRivals +
-                            mlFeature.Bonus_ArenaSpecialistModerateOdds + mlFeature.Bonus_FoodPosition3;
+                var penalty = InteractionCalculator.GetTotalPenalty(mlFeature);
+                var bonus = InteractionCalculator.GetTotalBonus(mlFeature);
 
                 // Label: winner = 3, others = 0 (higher is better in ranking)
                 var label = pirate.IsWinner == true ? 3u : 0u;
@@ -230,7 +228,7 @@ public class LearnToRank : IMlStrategy
                     RecentWinRate = (float)pirate.RecentWinRate,
                     WinRateVsCurrentRivals = (float)pirate.WinRateVsCurrentRivals,
                     AvgRivalStrength = (float)pirate.AvgRivalStrength,
-                    StrengthDiff = pirate.Strength - (float)avgStrength,
+                    StrengthDiff = pirate.Strength - avgStrength,
                     OddsRank = oddsRanks[i],
                     InteractionPenalty = penalty,
                     InteractionBonus = bonus

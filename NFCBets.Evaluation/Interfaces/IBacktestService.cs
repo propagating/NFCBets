@@ -10,13 +10,19 @@ public interface IBacktestService
     Task<BacktestResult> RunBacktestAsync(
         IMlStrategy strategy,
         List<PirateFeatureRecord> historicalData,
-        BacktestConfiguration? config = null);
+        BacktestConfiguration config);
 
     Task<List<BacktestResult>> CompareStrategiesBacktestAsync(
         Dictionary<string, IMlStrategy> strategies,
         List<PirateFeatureRecord> historicalData,
         BacktestConfiguration? config = null);
 
+    Task<FullComparisonReport> RunFullComparisonAsync(
+        Dictionary<string, IMlStrategy> strategies,
+        List<PirateFeatureRecord> historicalData,
+        int roundsToTest = 1000);
+
     void DisplayBacktestResults(BacktestResult result);
     void DisplayComparisonResults(List<BacktestResult> results);
+    void DisplayFullComparisonReport(FullComparisonReport report);
 }

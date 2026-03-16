@@ -144,16 +144,14 @@ public class CrossValidationService : ICrossValidationService
                 nameof(MlPirateFeature.RecentWinRate),
                 nameof(MlPirateFeature.WinRateVsCurrentRivals))
             .Append(_mlContext.Transforms.NormalizeMinMax("Features"))
-            .Append(_mlContext.BinaryClassification.Trainers.LightGbm(
-                nameof(MlPirateFeature.Won),
-                numberOfLeaves: 20,
+            .Append(_mlContext.BinaryClassification.Trainers.LightGbm(numberOfLeaves: 20,
                 minimumExampleCountPerLeaf: 50,
                 learningRate: 0.05,
                 numberOfIterations: 50));
 
         var model = pipeline.Fit(trainDataView);
         var predictions = model.Transform(testDataView);
-        var metrics = _mlContext.BinaryClassification.Evaluate(predictions, nameof(MlPirateFeature.Won));
+        var metrics = _mlContext.BinaryClassification.Evaluate(predictions);
 
         return new FoldResult
         {
@@ -203,12 +201,12 @@ public class CrossValidationService : ICrossValidationService
         {
             Console.WriteLine($"   Fold {fold.FoldNumber}:");
             Console.WriteLine($"      Train: {fold.TrainSize,5} | Test: {fold.TestSize,5}");
-            Console.WriteLine($"      Accuracy: {fold.Accuracy:P2} | AUC: {fold.AUC:F4} | F1: {fold.F1Score:F4}");
+            Console.WriteLine($"      Accuracy: {fold.Accuracy:P2} | Auc: {fold.AUC:F4} | F1: {fold.F1Score:F4}");
         }
 
         Console.WriteLine("\n📈 Aggregate Metrics:");
         Console.WriteLine($"   Average Accuracy:  {report.AverageAccuracy:P2} ± {report.StdDevAccuracy:P2}");
-        Console.WriteLine($"   Average AUC:       {report.AverageAUC:F4} ± {report.StdDevAUC:F4}");
+        Console.WriteLine($"   Average Auc:       {report.AverageAUC:F4} ± {report.StdDevAUC:F4}");
         Console.WriteLine($"   Average F1 Score:  {report.AverageF1Score:F4}");
 
         Console.WriteLine("\n💡 Assessment:");

@@ -1,30 +1,24 @@
+using Microsoft.ML;
 using NFCBets.Classical.Interfaces;
 using NFCBets.Classical.Models;
 using NFCBets.Utilities;
+using NFCBets.Utilities.Constants;
 using NFCBets.Utilities.Models;
 
 namespace NFCBets.Classical;
 
 public class Ensemble : IMlStrategy
 {
-    private readonly BinaryClassification _binaryStrategy;
-    private readonly BradleyTerry _bradleyTerryStrategy;
-    private readonly ConditionalLogisticRegression _conditionalLogisticStrategy;
-    private readonly MultiClassPerArena _multiClassStrategy;
-    private readonly LearnToRank _rankingStrategy;
-
+    private readonly MLContext _mlContext;
+    private readonly List<ITransformer> _models = new();
     private InteractionAnalysisReport? _interactionReport;
 
     public Ensemble()
     {
-        _binaryStrategy = new BinaryClassification();
-        _multiClassStrategy = new MultiClassPerArena();
-        _rankingStrategy = new LearnToRank();
-        _conditionalLogisticStrategy = new ConditionalLogisticRegression();
-        _bradleyTerryStrategy = new BradleyTerry();
+        _mlContext = new MLContext(42);
     }
 
-    public string StrategyName => "Ensemble";
+    public string StrategyName => "Ensemble (Weighted Average)";
 
     public async Task TrainAsync(List<PirateFeatureRecord> trainingData,
         InteractionAnalysisReport interactionReport = null)
@@ -33,230 +27,155 @@ public class Ensemble : IMlStrategy
 
         Console.WriteLine($"   Training {StrategyName}...");
 
-        try
+        if (_interactionReport != null)
+            Console.WriteLine("      Applying interaction controls");
+
+        var mlData = FeatureConversionHelper.ConvertToMlFormat(trainingData, _interactionReport);
+        var dataView = _mlContext.Data.LoadFromEnumerable(mlData);
+
+        // Define feature pipeline first
+        var featurePipeline = _mlContext.Transforms.Concatenate("Features",
+            // Core features
+            nameof(MlPirateFeature.Position),
+            nameof(MlPirateFeature.CurrentOdds),
+            nameof(MlPirateFeature.FoodAdjustment),
+            nameof(MlPirateFeature.Strength),
+            nameof(MlPirateFeature.Weight),
+            // Historical features
+            nameof(MlPirateFeature.HistoricalWinRate),
+            nameof(MlPirateFeature.ArenaWinRate),
+            nameof(MlPirateFeature.RecentWinRate),
+            nameof(MlPirateFeature.WinRateVsCurrentRivals),
+            nameof(MlPirateFeature.AvgRivalStrength),
+            // Derived features
+            nameof(MlPirateFeature.ImpliedProbability),
+            nameof(MlPirateFeature.RelativeStrength),
+            nameof(MlPirateFeature.EffectiveStrength),
+            // Binary indicators
+            nameof(MlPirateFeature.IsOddsFavorite),
+            nameof(MlPirateFeature.IsStrengthFavorite),
+            nameof(MlPirateFeature.HasPositiveFoodAdjustment),
+            nameof(MlPirateFeature.IsUndervalued),
+            nameof(MlPirateFeature.IsHotStreak),
+            nameof(MlPirateFeature.IsArenaSpecialist),
+            // Antagonistic penalties
+            nameof(MlPirateFeature.PenaltyFoodPosition),
+            nameof(MlPirateFeature.PenaltyFoodFavorite),
+            nameof(MlPirateFeature.PenaltyStrengthPosition),
+            nameof(MlPirateFeature.PenaltyStrengthWeakRivals),
+            nameof(MlPirateFeature.PenaltyFavoriteInexperienced),
+            nameof(MlPirateFeature.PenaltyLowStrengthFavorite),
+            // Synergistic bonuses
+            nameof(MlPirateFeature.BonusUndervaluedStrong),
+            nameof(MlPirateFeature.BonusArenaSpecialistModerateOdds),
+            nameof(MlPirateFeature.BonusHotStreakBeatsRivals),
+            nameof(MlPirateFeature.BonusFoodPositionThree),
+            // Three-way interactions
+            nameof(MlPirateFeature.ThreeWayFoodPositionStrength),
+            nameof(MlPirateFeature.ThreeWayUndervaluedStrongBeatsRivals))
+        .Append(_mlContext.Transforms.NormalizeMinMax("Features"));
+
+        // Pre-transform the data once
+        var transformedData = featurePipeline.Fit(dataView).Transform(dataView);
+
+        // Train each model separately with explicit typing
+        var trainerConfigs = new List<(string Name, Func<IEstimator<ITransformer>> TrainerFactory)>
         {
-            Console.WriteLine("      Training binary classifier...");
-            await _binaryStrategy.TrainAsync(trainingData, interactionReport);
-            Console.WriteLine("      ✅ Binary trained");
-        }
-        catch (Exception ex)
+            ("LightGBM", () => _mlContext.BinaryClassification.Trainers.LightGbm(
+                labelColumnName: ColumnNames.Label,
+                featureColumnName: ColumnNames.Features,
+                numberOfLeaves: 31,
+                minimumExampleCountPerLeaf: 20,
+                learningRate: 0.1,
+                numberOfIterations: 100)),
+                
+            ("LogisticRegression", () => _mlContext.BinaryClassification.Trainers.LbfgsLogisticRegression(
+                labelColumnName: ColumnNames.Label,
+                featureColumnName: ColumnNames.Features,
+                l1Regularization: 0.1f,
+                l2Regularization: 0.1f)),
+                
+            ("FastTree", () => _mlContext.BinaryClassification.Trainers.FastTree(
+                labelColumnName:ColumnNames.Label,
+                featureColumnName: ColumnNames.Features,
+                numberOfLeaves: 20,
+                numberOfTrees: 100,
+                minimumExampleCountPerLeaf: 10)),
+                
+            ("AveragedPerceptron", () => _mlContext.BinaryClassification.Trainers.AveragedPerceptron(
+                labelColumnName: ColumnNames.Label,
+                featureColumnName: ColumnNames.Features)),
+                
+            ("SdcaLogisticRegression", () => _mlContext.BinaryClassification.Trainers.SdcaLogisticRegression(
+                labelColumnName: ColumnNames.Label,
+                featureColumnName: ColumnNames.Features))
+        };
+
+        _models.Clear();
+
+        foreach (var (name, trainerFactory) in trainerConfigs)
         {
-            Console.WriteLine($"      ❌ Binary failed: {ex.Message}");
+            try
+            {
+                Console.WriteLine($"      Training {name}...");
+                var trainer = trainerFactory();
+                var model = trainer.Fit(transformedData);
+                
+                // Combine feature pipeline with the trained model
+                var fullPipeline = featurePipeline.Append(trainer);
+                var fullModel = fullPipeline.Fit(dataView);
+                
+                _models.Add(fullModel);
+                Console.WriteLine($"         ✅ {name} trained");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"         ⚠️ {name} failed: {ex.Message}");
+            }
         }
 
-        try
-        {
-            Console.WriteLine("      Training multi-class classifier...");
-            await _multiClassStrategy.TrainAsync(trainingData, interactionReport);
-            Console.WriteLine("      ✅ Multi-class trained");
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"      ❌ Multi-class failed: {ex.Message}");
-        }
-
-        try
-        {
-            Console.WriteLine("      Training ranker...");
-            await _rankingStrategy.TrainAsync(trainingData, interactionReport);
-            Console.WriteLine("      ✅ Ranker trained");
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"      ❌ Ranker failed: {ex.Message}");
-        }
-
-        try
-        {
-            Console.WriteLine("      Training conditional logistic...");
-            await _conditionalLogisticStrategy.TrainAsync(trainingData, interactionReport);
-            Console.WriteLine("      ✅ Conditional logistic trained");
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"      ❌ Conditional logistic failed: {ex.Message}");
-        }
-
-        try
-        {
-            Console.WriteLine("      Training Bradley-Terry...");
-            await _bradleyTerryStrategy.TrainAsync(trainingData, interactionReport);
-            Console.WriteLine("      ✅ Bradley-Terry trained");
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"      ❌ Bradley-Terry failed: {ex.Message}");
-        }
-
-        Console.WriteLine("   ✅ All ensemble components trained");
+        Console.WriteLine($"   ✅ Trained {_models.Count}/{trainerConfigs.Count} ensemble models");
     }
 
     public async Task<List<PiratePrediction>> PredictAsync(List<PirateFeatureRecord> features)
     {
-        Console.WriteLine("   Generating ensemble predictions...");
+        if (!_models.Any())
+            throw new InvalidOperationException("No models trained");
+
+        var mlData = FeatureConversionHelper.ConvertToMlFormat(features, _interactionReport);
+        var dataView = _mlContext.Data.LoadFromEnumerable(mlData);
 
         // Get predictions from all models
-        var binaryPreds = new List<PiratePrediction>();
-        var multiClassPreds = new List<PiratePrediction>();
-        var rankingPreds = new List<PiratePrediction>();
-        var conditionalPreds = new List<PiratePrediction>();
-        var bradleyTerryPreds = new List<PiratePrediction>();
+        var allProbabilities = new List<float[]>();
 
-        try
+        foreach (var model in _models)
         {
-            binaryPreds = await _binaryStrategy.PredictAsync(features);
-        }
-        catch
-        {
-            Console.WriteLine("      ⚠️ Binary predictions failed");
+            var modelPredictions = model.Transform(dataView);
+            var results = _mlContext.Data.CreateEnumerable<PiratePredictionOutput>(modelPredictions, false).ToList();
+            allProbabilities.Add(results.Select(r => r.Probability).ToArray());
         }
 
-        try
-        {
-            multiClassPreds = await _multiClassStrategy.PredictAsync(features);
-        }
-        catch
-        {
-            Console.WriteLine("      ⚠️ Multi-class predictions failed");
-        }
+        // Average predictions with equal weights
+        var weights = Enumerable.Repeat(1.0 / _models.Count, _models.Count).ToArray();
 
-        try
+        var predictions = new List<PiratePrediction>();
+        for (var i = 0; i < features.Count; i++)
         {
-            rankingPreds = await _rankingStrategy.PredictAsync(features);
-        }
-        catch
-        {
-            Console.WriteLine("      ⚠️ Ranking predictions failed");
-        }
+            var avgProb = 0f;
+            for (var m = 0; m < _models.Count; m++)
+                avgProb += (float)(allProbabilities[m][i] * weights[m]);
 
-        try
-        {
-            conditionalPreds = await _conditionalLogisticStrategy.PredictAsync(features);
-        }
-        catch
-        {
-            Console.WriteLine("      ⚠️ Conditional logistic predictions failed");
-        }
-
-        try
-        {
-            bradleyTerryPreds = await _bradleyTerryStrategy.PredictAsync(features);
-        }
-        catch
-        {
-            Console.WriteLine("      ⚠️ Bradley-Terry predictions failed");
-        }
-
-        Console.WriteLine($"      Binary: {binaryPreds.Count}, MultiClass: {multiClassPreds.Count}, " +
-                          $"Ranking: {rankingPreds.Count}, Conditional: {conditionalPreds.Count}, " +
-                          $"BradleyTerry: {bradleyTerryPreds.Count}");
-
-        // Create lookup dictionaries with (RoundId, ArenaId, PirateId) as key
-        var binaryDict = new Dictionary<(int, int, int), float>();
-        var multiDict = new Dictionary<(int, int, int), float>();
-        var rankDict = new Dictionary<(int, int, int), float>();
-        var conditionalDict = new Dictionary<(int, int, int), float>();
-        var bradleyDict = new Dictionary<(int, int, int), float>();
-
-        foreach (var pred in binaryPreds)
-        {
-            var key = (pred.RoundId, pred.ArenaId, pred.PirateId);
-            binaryDict[key] = pred.WinProbability;
-        }
-
-        foreach (var pred in multiClassPreds)
-        {
-            var key = (pred.RoundId, pred.ArenaId, pred.PirateId);
-            multiDict[key] = pred.WinProbability;
-        }
-
-        foreach (var pred in rankingPreds)
-        {
-            var key = (pred.RoundId, pred.ArenaId, pred.PirateId);
-            rankDict[key] = pred.WinProbability;
-        }
-
-        foreach (var pred in conditionalPreds)
-        {
-            var key = (pred.RoundId, pred.ArenaId, pred.PirateId);
-            conditionalDict[key] = pred.WinProbability;
-        }
-
-        foreach (var pred in bradleyTerryPreds)
-        {
-            var key = (pred.RoundId, pred.ArenaId, pred.PirateId);
-            bradleyDict[key] = pred.WinProbability;
-        }
-
-        // Weighted ensemble combining all models
-        // Weights based on typical performance (can be tuned)
-        var ensemblePredictions = features.Select(f =>
-        {
-            var key = (f.RoundId, f.ArenaId, f.PirateId);
-
-            var binaryProb = binaryDict.GetValueOrDefault(key, 0.25f);
-            var multiProb = multiDict.GetValueOrDefault(key, 0.25f);
-            var rankProb = rankDict.GetValueOrDefault(key, 0.25f);
-            var conditionalProb = conditionalDict.GetValueOrDefault(key, 0.25f);
-            var bradleyProb = bradleyDict.GetValueOrDefault(key, 0.25f);
-
-            // Count how many models contributed
-            var modelCount = 0;
-            var weightedSum = 0f;
-
-            if (binaryDict.ContainsKey(key))
+            predictions.Add(new PiratePrediction
             {
-                weightedSum += binaryProb * 0.20f;
-                modelCount++;
-            }
+                RoundId = features[i].RoundId,
+                ArenaId = features[i].ArenaId,
+                PirateId = features[i].PirateId,
+                WinProbability = Math.Clamp(avgProb, 0.01f, 0.99f),
+                Payout = Math.Max(2, features[i].CurrentOdds)
+            });
+        }
 
-            if (multiDict.ContainsKey(key))
-            {
-                weightedSum += multiProb * 0.15f;
-                modelCount++;
-            }
-
-            if (rankDict.ContainsKey(key))
-            {
-                weightedSum += rankProb * 0.15f;
-                modelCount++;
-            }
-
-            if (conditionalDict.ContainsKey(key))
-            {
-                weightedSum += conditionalProb * 0.25f;
-                modelCount++;
-            }
-
-            if (bradleyDict.ContainsKey(key))
-            {
-                weightedSum += bradleyProb * 0.25f;
-                modelCount++;
-            }
-
-            // Normalize if not all models contributed
-            var totalWeight = 0f;
-            if (binaryDict.ContainsKey(key)) totalWeight += 0.20f;
-            if (multiDict.ContainsKey(key)) totalWeight += 0.15f;
-            if (rankDict.ContainsKey(key)) totalWeight += 0.15f;
-            if (conditionalDict.ContainsKey(key)) totalWeight += 0.25f;
-            if (bradleyDict.ContainsKey(key)) totalWeight += 0.25f;
-
-            var ensembleProb = totalWeight > 0 ? weightedSum / totalWeight : 0.25f;
-
-            return new PiratePrediction
-            {
-                RoundId = f.RoundId,
-                ArenaId = f.ArenaId,
-                PirateId = f.PirateId,
-                WinProbability = Math.Clamp(ensembleProb, 0.01f, 0.99f),
-                Payout = Math.Max(2, f.CurrentOdds)
-            };
-        }).ToList();
-
-        Console.WriteLine($"      Ensemble: {ensemblePredictions.Count} predictions");
-
-        return ensemblePredictions;
+        return predictions;
     }
 
     public async Task<ModelEvaluationReport> EvaluateAsync(List<PirateFeatureRecord> testData)
@@ -269,14 +188,13 @@ public class Ensemble : IMlStrategy
         var totalRounds = 0;
         var allPredictions = new List<(bool Actual, float Predicted)>();
 
-        foreach (var arenaGroup in testData.GroupBy(f => f.ArenaId))
-        foreach (var roundGroup in arenaGroup.GroupBy(f => f.RoundId))
+        foreach (var roundGroup in testData.GroupBy(f => (f.RoundId, f.ArenaId)))
         {
             var actualWinner = roundGroup.FirstOrDefault(p => p.IsWinner == true);
             if (actualWinner == null) continue;
 
             var roundPredictions = predictions
-                .Where(p => p.RoundId == roundGroup.Key && p.ArenaId == arenaGroup.Key)
+                .Where(p => p.RoundId == roundGroup.Key.RoundId && p.ArenaId == roundGroup.Key.ArenaId)
                 .ToList();
 
             if (!roundPredictions.Any()) continue;
@@ -302,7 +220,7 @@ public class Ensemble : IMlStrategy
         return new ModelEvaluationReport
         {
             Accuracy = accuracy,
-            AUC = auc,
+            Auc = auc,
             F1Score = accuracy * 0.5,
             TestDataSize = testData.Count,
             LogLoss = logLoss
@@ -311,58 +229,24 @@ public class Ensemble : IMlStrategy
 
     public void SaveModel(string path)
     {
-        _binaryStrategy.SaveModel(path.Replace(".zip", "_ensemble_binary.zip"));
-        _multiClassStrategy.SaveModel(path.Replace(".zip", "_ensemble_multiclass.zip"));
-        _rankingStrategy.SaveModel(path.Replace(".zip", "_ensemble_ranking.zip"));
-        _conditionalLogisticStrategy.SaveModel(path.Replace(".zip", "_ensemble_conditional.zip"));
-        _bradleyTerryStrategy.SaveModel(path.Replace(".zip", "_ensemble_bradley.zip"));
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+
+        for (var i = 0; i < _models.Count; i++)
+        {
+            var modelPath = path.Replace(".zip", $"_ensemble_{i}.zip");
+            _mlContext.Model.Save(_models[i], null, modelPath);
+        }
     }
 
     public void LoadModel(string path)
     {
-        try
-        {
-            _binaryStrategy.LoadModel(path.Replace(".zip", "_ensemble_binary.zip"));
-        }
-        catch
-        {
-            Console.WriteLine("      ⚠️ Could not load binary model");
-        }
+        _models.Clear();
 
-        try
+        for (var i = 0; i < 5; i++)
         {
-            _multiClassStrategy.LoadModel(path.Replace(".zip", "_ensemble_multiclass.zip"));
-        }
-        catch
-        {
-            Console.WriteLine("      ⚠️ Could not load multi-class model");
-        }
-
-        try
-        {
-            _rankingStrategy.LoadModel(path.Replace(".zip", "_ensemble_ranking.zip"));
-        }
-        catch
-        {
-            Console.WriteLine("      ⚠️ Could not load ranking model");
-        }
-
-        try
-        {
-            _conditionalLogisticStrategy.LoadModel(path.Replace(".zip", "_ensemble_conditional.zip"));
-        }
-        catch
-        {
-            Console.WriteLine("      ⚠️ Could not load conditional logistic model");
-        }
-
-        try
-        {
-            _bradleyTerryStrategy.LoadModel(path.Replace(".zip", "_ensemble_bradley.zip"));
-        }
-        catch
-        {
-            Console.WriteLine("      ⚠️ Could not load Bradley-Terry model");
+            var modelPath = path.Replace(".zip", $"_ensemble_{i}.zip");
+            if (File.Exists(modelPath))
+                _models.Add(_mlContext.Model.Load(modelPath, out _));
         }
     }
 }

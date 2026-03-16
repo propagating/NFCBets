@@ -26,7 +26,8 @@ public class PairwiseComparison : IMlStrategy
 
         Console.WriteLine($"   Training {StrategyName}...");
 
-        if (_interactionReport != null) Console.WriteLine("      Applying interaction controls");
+        if (_interactionReport != null) 
+            Console.WriteLine("      Applying interaction controls");
 
         var pairwiseData = CreatePairwiseData(trainingData);
 
@@ -64,17 +65,22 @@ public class PairwiseComparison : IMlStrategy
 
         var predictions = new List<PiratePrediction>();
 
+        // Pre-compute grouped data for feature conversion
+        var groupedByRoundArena = features
+            .GroupBy(f => (f.RoundId, f.ArenaId))
+            .ToDictionary(g => g.Key, g => g.ToList());
+
         foreach (var roundGroup in features.GroupBy(f => (f.RoundId, f.ArenaId)))
         {
             var pirates = roundGroup.OrderBy(p => p.Position).ToList();
             if (pirates.Count != 4) continue;
 
-            // Calculate interaction features
+            // Calculate interaction features using new property names
             var mlFeatures = new MlPirateFeature[4];
             for (var i = 0; i < 4; i++)
             {
-                mlFeatures[i] = new MlPirateFeature();
-                InteractionCalculator.ApplyInteractionFeatures(mlFeatures[i], pirates[i], _interactionReport);
+                mlFeatures[i] = FeatureConversionHelper.ConvertSingle(
+                    pirates[i], groupedByRoundArena, _interactionReport);
             }
 
             var pairwiseProbs = new double[4, 4];
@@ -91,13 +97,11 @@ public class PairwiseComparison : IMlStrategy
                 var pirateA = pirates[i];
                 var pirateB = pirates[j];
 
-                var penaltyA = mlFeatures[i].Penalty_FoodPosition + mlFeatures[i].Penalty_FoodFavorite +
-                               mlFeatures[i].Penalty_StrengthPosition + mlFeatures[i].Penalty_StrengthWeakRivals;
-                var bonusA = mlFeatures[i].Bonus_UndervaluedStrong + mlFeatures[i].Bonus_HotStreakBeatsRivals;
+                var penaltyA = InteractionCalculator.GetTotalPenalty(mlFeatures[i]);
+                var bonusA = InteractionCalculator.GetTotalBonus(mlFeatures[i]);
 
-                var penaltyB = mlFeatures[j].Penalty_FoodPosition + mlFeatures[j].Penalty_FoodFavorite +
-                               mlFeatures[j].Penalty_StrengthPosition + mlFeatures[j].Penalty_StrengthWeakRivals;
-                var bonusB = mlFeatures[j].Bonus_UndervaluedStrong + mlFeatures[j].Bonus_HotStreakBeatsRivals;
+                var penaltyB = InteractionCalculator.GetTotalPenalty(mlFeatures[j]);
+                var bonusB = InteractionCalculator.GetTotalBonus(mlFeatures[j]);
 
                 var pairFeature = new PairwiseFeature
                 {
@@ -198,7 +202,7 @@ public class PairwiseComparison : IMlStrategy
         return new ModelEvaluationReport
         {
             Accuracy = accuracy,
-            AUC = auc,
+            Auc = auc,
             F1Score = accuracy * 0.5,
             TestDataSize = testData.Count,
             LogLoss = logLoss
@@ -223,6 +227,11 @@ public class PairwiseComparison : IMlStrategy
     {
         var pairwise = new List<PairwiseFeature>();
 
+        // Pre-compute grouped data for feature conversion
+        var groupedByRoundArena = data
+            .GroupBy(f => (f.RoundId, f.ArenaId))
+            .ToDictionary(g => g.Key, g => g.ToList());
+
         var roundGroups = data.GroupBy(f => (f.RoundId, f.ArenaId));
 
         foreach (var round in roundGroups)
@@ -233,12 +242,12 @@ public class PairwiseComparison : IMlStrategy
             var winnerIdx = pirates.FindIndex(p => p.IsWinner == true);
             if (winnerIdx < 0) continue;
 
-            // Calculate interaction features for each pirate
+            // Calculate interaction features for each pirate using new property names
             var mlFeatures = new MlPirateFeature[4];
             for (var i = 0; i < 4; i++)
             {
-                mlFeatures[i] = new MlPirateFeature();
-                InteractionCalculator.ApplyInteractionFeatures(mlFeatures[i], pirates[i], _interactionReport);
+                mlFeatures[i] = FeatureConversionHelper.ConvertSingle(
+                    pirates[i], groupedByRoundArena, _interactionReport);
             }
 
             // Create all 6 pairwise comparisons (4 choose 2)
@@ -250,13 +259,11 @@ public class PairwiseComparison : IMlStrategy
 
                 var aWins = i == winnerIdx;
 
-                var penaltyA = mlFeatures[i].Penalty_FoodPosition + mlFeatures[i].Penalty_FoodFavorite +
-                               mlFeatures[i].Penalty_StrengthPosition + mlFeatures[i].Penalty_StrengthWeakRivals;
-                var bonusA = mlFeatures[i].Bonus_UndervaluedStrong + mlFeatures[i].Bonus_HotStreakBeatsRivals;
+                var penaltyA = InteractionCalculator.GetTotalPenalty(mlFeatures[i]);
+                var bonusA = InteractionCalculator.GetTotalBonus(mlFeatures[i]);
 
-                var penaltyB = mlFeatures[j].Penalty_FoodPosition + mlFeatures[j].Penalty_FoodFavorite +
-                               mlFeatures[j].Penalty_StrengthPosition + mlFeatures[j].Penalty_StrengthWeakRivals;
-                var bonusB = mlFeatures[j].Bonus_UndervaluedStrong + mlFeatures[j].Bonus_HotStreakBeatsRivals;
+                var penaltyB = InteractionCalculator.GetTotalPenalty(mlFeatures[j]);
+                var bonusB = InteractionCalculator.GetTotalBonus(mlFeatures[j]);
 
                 pairwise.Add(new PairwiseFeature
                 {
@@ -276,7 +283,7 @@ public class PairwiseComparison : IMlStrategy
                     B_InteractionPenalty = penaltyB,
                     B_InteractionBonus = bonusB,
 
-                    Diff_Strength = pirateA.Strength - pirateB.Strength,
+Diff_Strength = pirateA.Strength - pirateB.Strength,
                     Diff_Odds = (float)(Math.Log(Math.Max(2, pirateA.CurrentOdds)) -
                                         Math.Log(Math.Max(2, pirateB.CurrentOdds))),
                     Diff_Food = pirateA.FoodAdjustment - pirateB.FoodAdjustment,

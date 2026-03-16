@@ -612,7 +612,7 @@ public class BettingStrategyComparisonService(
 
         if (best != null)
         {
-            Console.WriteLine($"\n🎯 RECOMMENDATIONS:");
+            Console.WriteLine("\n🎯 RECOMMENDATIONS:");
             Console.WriteLine($"   💰 Best ROI:           {best.BettingStrategy} ({best.ROI:P2})");
             
             if (safest != null)
@@ -675,7 +675,7 @@ public class BettingStrategyComparisonService(
 
         // Overall best combination
         var overallBest = results.OrderByDescending(r => r.ROI).First();
-        Console.WriteLine($"\n🏆 BEST COMBINATION:");
+        Console.WriteLine("\n🏆 BEST COMBINATION:");
         Console.WriteLine($"   ML Model: {overallBest.MlStrategyName}");
         Console.WriteLine($"   Betting Strategy: {overallBest.BettingStrategy}");
         Console.WriteLine($"   ROI: {overallBest.ROI:P2} | Profit: ${overallBest.TotalProfit:N2} | Sharpe: {overallBest.SharpeRatio:F2}");

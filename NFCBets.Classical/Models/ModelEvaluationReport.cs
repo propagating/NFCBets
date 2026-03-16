@@ -3,7 +3,7 @@ namespace NFCBets.Classical.Models;
 public class ModelEvaluationReport
 {
     public double Accuracy { get; set; }
-    public double AUC { get; set; }
+    public double Auc { get; set; }
     public double F1Score { get; set; }
     public double Precision { get; set; }
     public double Recall { get; set; }

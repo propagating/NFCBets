@@ -10,4 +10,8 @@ public class InteractionAnalysisReport
     public List<InteractionAnalysisEffect> AntagonisticInteractions { get; set; } = new();
     public List<InteractionAnalysisEffect> SynergisticInteractions { get; set; } = new();
     public List<InteractionAnalysisEffect> NeutralInteractions { get; set; } = new();
+    
+    // Arena-specific data
+    public Dictionary<int, ArenaAnalysis> ArenaAnalyses { get; set; } = new();
+    public List<PirateArenaSpecialist> ArenaSpecialists { get; set; } = new();
 }

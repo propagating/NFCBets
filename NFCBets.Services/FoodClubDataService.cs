@@ -1,26 +1,20 @@
 using System.Collections.Concurrent;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using NFCBets.EF.Models;
 using NFCBets.Services.Interfaces;
 using NFCBets.Services.Models;
 
 namespace NFCBets.Services;
 
-public class FoodClubDataService : IFoodClubDataService
+public class FoodClubDataService(
+    HttpClient httpClient,
+    NfcbetsContext context,
+    IFoodAdjustmentService foodAdjustmentService,
+    ILogger<FoodClubDataService> logger)
+    : IFoodClubDataService
 {
-    private readonly NfcbetsContext _context;
-    private readonly IFoodAdjustmentService _foodAdjustmentService;
-    private readonly HttpClient _httpClient;
-
-    public FoodClubDataService(HttpClient httpClient, NfcbetsContext context,
-        IFoodAdjustmentService foodAdjustmentService)
-    {
-        _httpClient = httpClient;
-        _context = context;
-        _foodAdjustmentService = foodAdjustmentService;
-    }
-
     public async Task<bool> CollectAndSaveRoundAsync(int roundId)
     {
         try
@@ -34,7 +28,7 @@ public class FoodClubDataService : IFoodClubDataService
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error collecting round {roundId}: {ex.Message}");
+            logger.LogError($"Error collecting round {roundId}: {ex.Message}");
             return false;
         }
     }
@@ -57,7 +51,7 @@ public class FoodClubDataService : IFoodClubDataService
         if (!forceCollect)
         {
             // Only check for existing rounds if not forcing collection
-            completedRounds = await _context.RoundResults
+            completedRounds = await context.RoundResults
                 .Where(x => x.IsComplete && x.RoundId.HasValue)
                 .Select(x => x.RoundId!.Value)
                 .Distinct()
@@ -87,21 +81,21 @@ public class FoodClubDataService : IFoodClubDataService
         {
             if (!forceCollect && completedRounds.Contains(round))
             {
-                Console.WriteLine($"⏭️  Skipping round {round} (already collected)");
+                logger.LogInformation($"⏭️  Skipping round {round} (already collected)");
                 continue;
             }
 
             if (forceCollect && completedRounds.Contains(round))
-                Console.WriteLine($"🔄 Re-collecting round {round} (force collect enabled)");
+                logger.LogInformation($"🔄 Re-collecting round {round} (force collect enabled)");
 
             if (await CollectAndSaveRoundAsync(round))
             {
                 successfulRounds.Add(round);
-                Console.WriteLine($"✅ Collected round {round}");
+                logger.LogInformation($"✅ Collected round {round}");
             }
             else
             {
-                Console.WriteLine($"❌ Failed round {round}");
+                logger.LogWarning($"❌ Failed round {round}");
             }
 
             // Optional: Add small delay to avoid hammering the API
@@ -134,7 +128,7 @@ public class FoodClubDataService : IFoodClubDataService
 
         if (!forceCollect)
         {
-            completedRounds = await _context.RoundResults
+            completedRounds = await context.RoundResults
                 .Where(x => x.IsComplete && x.RoundId.HasValue)
                 .Select(x => x.RoundId!.Value)
                 .Distinct()
@@ -203,7 +197,7 @@ public class FoodClubDataService : IFoodClubDataService
 
         try
         {
-            var response = await _httpClient.GetAsync(url);
+            var response = await httpClient.GetAsync(url);
             if (!response.IsSuccessStatusCode)
                 return null;
 
@@ -224,22 +218,22 @@ public class FoodClubDataService : IFoodClubDataService
     /// </summary>
     private async Task SaveRoundDataAsync(FoodClubRoundData roundData)
     {
-        using var transaction = await _context.Database.BeginTransactionAsync();
+        using var transaction = await context.Database.BeginTransactionAsync();
         try
         {
             // Validate odds arrays structure
             ValidateRoundDataStructure(roundData);
 
             // Batch load ALL existing records for this round upfront
-            var existingPlacements = await _context.RoundPiratePlacements
+            var existingPlacements = await context.RoundPiratePlacements
                 .Where(rpp => rpp.RoundId == roundData.Round)
                 .ToListAsync();
 
-            var existingFoodCourses = await _context.RoundFoodCourses
+            var existingFoodCourses = await context.RoundFoodCourses
                 .Where(rfc => rfc.RoundId == roundData.Round)
                 .ToListAsync();
 
-            var existingResults = await _context.RoundResults
+            var existingResults = await context.RoundResults
                 .Where(rr => rr.RoundId == roundData.Round)
                 .ToListAsync();
 
@@ -284,7 +278,7 @@ public class FoodClubDataService : IFoodClubDataService
                 }
 
                 // Calculate food adjustments for all pirates in arena at once
-                var foodAdjustments = await _foodAdjustmentService
+                var foodAdjustments = await foodAdjustmentService
                     .CalculateFoodAdjustmentsBatchAsync(roundData.Round, arenaId, pirateIds);
 
                 // Process pirate placements
@@ -388,24 +382,24 @@ public class FoodClubDataService : IFoodClubDataService
             // Bulk insert all new records at once
             if (newFoodCourses.Any())
             {
-                await _context.RoundFoodCourses.AddRangeAsync(newFoodCourses);
+                await context.RoundFoodCourses.AddRangeAsync(newFoodCourses);
                 Console.WriteLine($"   Adding {newFoodCourses.Count} new food courses");
             }
 
             if (newPlacements.Any())
             {
-                await _context.RoundPiratePlacements.AddRangeAsync(newPlacements);
+                await context.RoundPiratePlacements.AddRangeAsync(newPlacements);
                 Console.WriteLine($"   Adding {newPlacements.Count} new placements");
             }
 
             if (newResults.Any())
             {
-                await _context.RoundResults.AddRangeAsync(newResults);
+                await context.RoundResults.AddRangeAsync(newResults);
                 Console.WriteLine($"   Adding {newResults.Count} new results");
             }
 
             // Single SaveChanges for entire round
-            await _context.SaveChangesAsync();
+            await context.SaveChangesAsync();
             await transaction.CommitAsync();
 
             Console.WriteLine($"   ✅ Round {roundData.Round} saved successfully");

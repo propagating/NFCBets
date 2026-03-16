@@ -2,6 +2,7 @@ using Microsoft.ML;
 using NFCBets.Classical.Interfaces;
 using NFCBets.Classical.Models;
 using NFCBets.Utilities;
+using NFCBets.Utilities.Constants;
 using NFCBets.Utilities.Models;
 
 namespace NFCBets.Classical;
@@ -30,45 +31,66 @@ public class BinaryClassification : IMlStrategy
             Console.WriteLine(
                 $"      Applying {_interactionReport.AntagonisticInteractions.Count} antagonistic + {_interactionReport.SynergisticInteractions.Count} synergistic interaction controls");
 
-        var mlData = ConvertToMlFormat(trainingData);
+        var mlData = FeatureConversionHelper.ConvertToMlFormat(trainingData, _interactionReport);
         var dataView = _mlContext.Data.LoadFromEnumerable(mlData);
 
         var pipeline = _mlContext.Transforms.Concatenate("Features",
-                // Base features
-                nameof(MlPirateFeature.Position),
-                nameof(MlPirateFeature.CurrentOdds),
-                nameof(MlPirateFeature.FoodAdjustment),
-                nameof(MlPirateFeature.Strength),
-                nameof(MlPirateFeature.Weight),
-                nameof(MlPirateFeature.HistoricalWinRate),
-                nameof(MlPirateFeature.ArenaWinRate),
-                nameof(MlPirateFeature.RecentWinRate),
-                nameof(MlPirateFeature.WinRateVsCurrentRivals),
-                nameof(MlPirateFeature.AvgRivalStrength),
-                // Antagonistic penalties
-                nameof(MlPirateFeature.Penalty_FoodPosition),
-                nameof(MlPirateFeature.Penalty_FoodFavorite),
-                nameof(MlPirateFeature.Penalty_StrengthPosition),
-                nameof(MlPirateFeature.Penalty_StrengthWeakRivals),
-                nameof(MlPirateFeature.Penalty_FavoriteInexperienced),
-                nameof(MlPirateFeature.Penalty_LowStrengthFavorite),
-                // Synergistic bonuses
-                nameof(MlPirateFeature.Bonus_UndervaluedStrong),
-                nameof(MlPirateFeature.Bonus_ArenaSpecialistModerateOdds),
-                nameof(MlPirateFeature.Bonus_HotStreakBeatsRivals),
-                nameof(MlPirateFeature.Bonus_FoodPosition3),
-                // Three-way interactions
-                nameof(MlPirateFeature.ThreeWay_FoodPositionStrength),
-                nameof(MlPirateFeature.ThreeWay_UndervaluedStrongBeatsRivals))
-            .Append(_mlContext.Transforms.NormalizeMinMax("Features"))
-            .Append(_mlContext.BinaryClassification.Trainers.LightGbm(
-                nameof(MlPirateFeature.Won),
-                numberOfLeaves: 31,
-                minimumExampleCountPerLeaf: 20,
-                learningRate: 0.1,
-                numberOfIterations: 100));
+        // Core features
+        nameof(MlPirateFeature.Position),
+        nameof(MlPirateFeature.CurrentOdds),
+        nameof(MlPirateFeature.FoodAdjustment),
+        nameof(MlPirateFeature.Strength),
+        nameof(MlPirateFeature.Weight),
+        // Historical features
+        nameof(MlPirateFeature.HistoricalWinRate),
+        nameof(MlPirateFeature.ArenaWinRate),
+        nameof(MlPirateFeature.RecentWinRate),
+        nameof(MlPirateFeature.WinRateVsCurrentRivals),
+        nameof(MlPirateFeature.AvgRivalStrength),
+        // Derived features
+        nameof(MlPirateFeature.ImpliedProbability),
+        nameof(MlPirateFeature.RelativeStrength),
+        nameof(MlPirateFeature.EffectiveStrength),
+        // Binary indicators
+        nameof(MlPirateFeature.IsOddsFavorite),
+        nameof(MlPirateFeature.IsStrengthFavorite),
+        nameof(MlPirateFeature.HasPositiveFoodAdjustment),
+        nameof(MlPirateFeature.IsUndervalued),
+        nameof(MlPirateFeature.IsHotStreak),
+        nameof(MlPirateFeature.IsArenaSpecialist),
+        // Antagonistic penalties
+        nameof(MlPirateFeature.PenaltyFoodPosition),
+        nameof(MlPirateFeature.PenaltyFoodFavorite),
+        nameof(MlPirateFeature.PenaltyStrengthPosition),
+        nameof(MlPirateFeature.PenaltyStrengthWeakRivals),
+        nameof(MlPirateFeature.PenaltyFavoriteInexperienced),
+        nameof(MlPirateFeature.PenaltyLowStrengthFavorite),
+        nameof(MlPirateFeature.PenaltyOddsShortenedLowStrength),
+        nameof(MlPirateFeature.PenaltyArenaSpecialistColdStreak),
+        // Synergistic bonuses
+        nameof(MlPirateFeature.BonusUndervaluedStrong),
+        nameof(MlPirateFeature.BonusArenaSpecialistModerateOdds),
+        nameof(MlPirateFeature.BonusHotStreakBeatsRivals),
+        nameof(MlPirateFeature.BonusFoodPositionThree),
+        nameof(MlPirateFeature.BonusOddsShortenedStrong),
+        nameof(MlPirateFeature.BonusFavoriteArenaSpecialist),
+        nameof(MlPirateFeature.BonusStrengthPlusFood),
+        nameof(MlPirateFeature.BonusHotStreakFavorite),
+        // Three-way interactions
+        nameof(MlPirateFeature.ThreeWayFoodPositionStrength),
+        nameof(MlPirateFeature.ThreeWayUndervaluedStrongBeatsRivals),
+        nameof(MlPirateFeature.ThreeWayFavoriteSpecialistHotStreak),
+        nameof(MlPirateFeature.ThreeWayStrengthFoodPositionThree))
+    .Append(_mlContext.Transforms.NormalizeMinMax("Features"))
+    .Append(_mlContext.BinaryClassification.Trainers.LightGbm(
+        labelColumnName: ColumnNames.Label,
+        featureColumnName: ColumnNames.Features,
+        numberOfLeaves: 31,
+        minimumExampleCountPerLeaf: 20,
+        learningRate: 0.1,
+        numberOfIterations: 100));
 
-        _model = pipeline.Fit(dataView);
+_model = pipeline.Fit(dataView);
 
         Console.WriteLine($"   ✅ {StrategyName} trained");
     }
@@ -78,7 +100,7 @@ public class BinaryClassification : IMlStrategy
         if (_model == null)
             throw new InvalidOperationException("Model must be trained first");
 
-        var mlData = ConvertToMlFormat(features);
+        var mlData = FeatureConversionHelper.ConvertToMlFormat(features, _interactionReport);
         var dataView = _mlContext.Data.LoadFromEnumerable(mlData);
         var predictions = _model.Transform(dataView);
 
@@ -99,16 +121,16 @@ public class BinaryClassification : IMlStrategy
         if (_model == null)
             throw new InvalidOperationException("Model must be trained first");
 
-        var mlTestData = ConvertToMlFormat(testData);
+        var mlTestData = FeatureConversionHelper.ConvertToMlFormat(testData, _interactionReport);
         var testDataView = _mlContext.Data.LoadFromEnumerable(mlTestData);
         var predictions = _model.Transform(testDataView);
 
-        var metrics = _mlContext.BinaryClassification.Evaluate(predictions, nameof(MlPirateFeature.Won));
+        var metrics = _mlContext.BinaryClassification.Evaluate(predictions, labelColumnName: ColumnNames.Label);
 
         return new ModelEvaluationReport
         {
             Accuracy = metrics.Accuracy,
-            AUC = metrics.AreaUnderRocCurve,
+            Auc = metrics.AreaUnderRocCurve,
             F1Score = metrics.F1Score,
             Precision = metrics.PositivePrecision,
             Recall = metrics.PositiveRecall,
@@ -129,33 +151,5 @@ public class BinaryClassification : IMlStrategy
     public void LoadModel(string path)
     {
         _model = _mlContext.Model.Load(path, out _);
-    }
-
-    private List<MlPirateFeature> ConvertToMlFormat(List<PirateFeatureRecord> features)
-    {
-        return features.Select(f =>
-        {
-            var mlFeature = new MlPirateFeature
-            {
-                Position = f.Position,
-                CurrentOdds = Math.Max(2, f.CurrentOdds),
-                FoodAdjustment = f.FoodAdjustment,
-                Strength = f.Strength,
-                Weight = f.Weight,
-                HistoricalWinRate = (float)f.HistoricalWinRate,
-                TotalAppearances = f.TotalAppearances,
-                ArenaWinRate = (float)f.ArenaWinRate,
-                RecentWinRate = (float)f.RecentWinRate,
-                WinRateVsCurrentRivals = (float)f.WinRateVsCurrentRivals,
-                MatchesVsCurrentRivals = f.MatchesVsCurrentRivals,
-                AvgRivalStrength = (float)f.AvgRivalStrength,
-                Won = f.IsWinner ?? false
-            };
-
-            // Apply interaction features
-            InteractionCalculator.ApplyInteractionFeatures(mlFeature, f, _interactionReport);
-
-            return mlFeature;
-        }).ToList();
     }
 }

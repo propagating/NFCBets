@@ -9,7 +9,6 @@ namespace NFCBets.Classical;
 public class MultiClassPerArena : IMlStrategy
 {
     private readonly Dictionary<int, ITransformer> _arenaModels = new();
-
     private readonly MLContext _mlContext;
     private InteractionAnalysisReport? _interactionReport;
 
@@ -27,7 +26,8 @@ public class MultiClassPerArena : IMlStrategy
 
         Console.WriteLine($"   Training {StrategyName}...");
 
-        if (_interactionReport != null) Console.WriteLine("      Applying interaction controls");
+        if (_interactionReport != null) 
+            Console.WriteLine("      Applying interaction controls");
 
         for (var arenaId = 1; arenaId <= 5; arenaId++)
         {
@@ -188,7 +188,7 @@ public class MultiClassPerArena : IMlStrategy
         return new ModelEvaluationReport
         {
             Accuracy = accuracy,
-            AUC = auc,
+            Auc = auc,
             F1Score = accuracy * 0.5,
             TestDataSize = testData.Count,
             LogLoss = logLoss
@@ -207,18 +207,24 @@ public class MultiClassPerArena : IMlStrategy
             }
     }
 
-    public void LoadModel(string path)
+public void LoadModel(string path)
     {
         for (var arenaId = 1; arenaId <= 5; arenaId++)
         {
             var arenaPath = path.Replace(".zip", $"_multiclass_arena{arenaId}.zip");
-            if (File.Exists(arenaPath)) _arenaModels[arenaId] = _mlContext.Model.Load(arenaPath, out _);
+            if (File.Exists(arenaPath))
+                _arenaModels[arenaId] = _mlContext.Model.Load(arenaPath, out _);
         }
     }
 
     private List<ArenaRoundFeatureImproved> ConvertToArenaRoundFormat(List<PirateFeatureRecord> arenaData)
     {
         var result = new List<ArenaRoundFeatureImproved>();
+
+        // Pre-compute grouped data for feature conversion
+        var groupedByRoundArena = arenaData
+            .GroupBy(f => (f.RoundId, f.ArenaId))
+            .ToDictionary(g => g.Key, g => g.ToList());
 
         var roundGroups = arenaData.GroupBy(f => f.RoundId);
 
@@ -248,64 +254,57 @@ public class MultiClassPerArena : IMlStrategy
                 .Select(x => (float)x.Rank)
                 .ToArray();
 
-            // Calculate interaction penalties/bonuses for each pirate
             var penalties = new float[4];
             var bonuses = new float[4];
 
             for (var i = 0; i < 4; i++)
             {
-                var mlFeature = new MlPirateFeature();
-                InteractionCalculator.ApplyInteractionFeatures(mlFeature, pirates[i], _interactionReport);
-                penalties[i] = mlFeature.Penalty_FoodPosition + mlFeature.Penalty_FoodFavorite +
-                               mlFeature.Penalty_StrengthPosition + mlFeature.Penalty_StrengthWeakRivals;
-                bonuses[i] = mlFeature.Bonus_UndervaluedStrong + mlFeature.Bonus_HotStreakBeatsRivals +
-                             mlFeature.Bonus_ArenaSpecialistModerateOdds + mlFeature.Bonus_FoodPosition3;
+                var mlFeature = FeatureConversionHelper.ConvertSingle(
+                    pirates[i], groupedByRoundArena, _interactionReport);
+                penalties[i] = InteractionCalculator.GetTotalPenalty(mlFeature);
+                bonuses[i] = InteractionCalculator.GetTotalBonus(mlFeature);
             }
 
             result.Add(new ArenaRoundFeatureImproved
             {
-                // Pirate 0
                 Pirate0_Strength = pirates[0].Strength,
                 Pirate0_Odds = Math.Max(2, pirates[0].CurrentOdds),
                 Pirate0_Food = pirates[0].FoodAdjustment,
                 Pirate0_HistWin = (float)pirates[0].HistoricalWinRate,
-                Pirate0_StrengthDiff = pirates[0].Strength - (float)avgStrength,
+                Pirate0_StrengthDiff = pirates[0].Strength - avgStrength,
                 Pirate0_OddsRank = oddsRanks[0],
                 Pirate0_FoodRank = foodRanks[0],
                 Pirate0_FoodPositionInteraction = pirates[0].FoodAdjustment * pirates[0].Position,
                 Pirate0_InteractionPenalty = penalties[0],
                 Pirate0_InteractionBonus = bonuses[0],
 
-                // Pirate 1
                 Pirate1_Strength = pirates[1].Strength,
                 Pirate1_Odds = Math.Max(2, pirates[1].CurrentOdds),
                 Pirate1_Food = pirates[1].FoodAdjustment,
                 Pirate1_HistWin = (float)pirates[1].HistoricalWinRate,
-                Pirate1_StrengthDiff = pirates[1].Strength - (float)avgStrength,
+                Pirate1_StrengthDiff = pirates[1].Strength - avgStrength,
                 Pirate1_OddsRank = oddsRanks[1],
                 Pirate1_FoodRank = foodRanks[1],
                 Pirate1_FoodPositionInteraction = pirates[1].FoodAdjustment * pirates[1].Position,
                 Pirate1_InteractionPenalty = penalties[1],
                 Pirate1_InteractionBonus = bonuses[1],
 
-                // Pirate 2
                 Pirate2_Strength = pirates[2].Strength,
                 Pirate2_Odds = Math.Max(2, pirates[2].CurrentOdds),
                 Pirate2_Food = pirates[2].FoodAdjustment,
                 Pirate2_HistWin = (float)pirates[2].HistoricalWinRate,
-                Pirate2_StrengthDiff = pirates[2].Strength - (float)avgStrength,
+                Pirate2_StrengthDiff = pirates[2].Strength - avgStrength,
                 Pirate2_OddsRank = oddsRanks[2],
                 Pirate2_FoodRank = foodRanks[2],
                 Pirate2_FoodPositionInteraction = pirates[2].FoodAdjustment * pirates[2].Position,
                 Pirate2_InteractionPenalty = penalties[2],
                 Pirate2_InteractionBonus = bonuses[2],
 
-                // Pirate 3
                 Pirate3_Strength = pirates[3].Strength,
                 Pirate3_Odds = Math.Max(2, pirates[3].CurrentOdds),
                 Pirate3_Food = pirates[3].FoodAdjustment,
                 Pirate3_HistWin = (float)pirates[3].HistoricalWinRate,
-                Pirate3_StrengthDiff = pirates[3].Strength - (float)avgStrength,
+                Pirate3_StrengthDiff = pirates[3].Strength - avgStrength,
                 Pirate3_OddsRank = oddsRanks[3],
                 Pirate3_FoodRank = foodRanks[3],
                 Pirate3_FoodPositionInteraction = pirates[3].FoodAdjustment * pirates[3].Position,

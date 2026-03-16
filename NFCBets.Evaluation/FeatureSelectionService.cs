@@ -222,13 +222,13 @@ public class FeatureSelectionService : IFeatureSelectionService
         await strategy.TrainAsync(trainData);
         var evaluation = await strategy.EvaluateAsync(testData);
 
-        Console.WriteLine($"      AUC: {evaluation.AUC:F4}, Accuracy: {evaluation.Accuracy:P2}");
+        Console.WriteLine($"      Auc: {evaluation.Auc:F4}, Accuracy: {evaluation.Accuracy:P2}");
 
         return new FeatureCombinationResult
         {
             Name = name,
             Features = features,
-            AUC = evaluation.AUC,
+            AUC = evaluation.Auc,
             Accuracy = evaluation.Accuracy,
             F1Score = evaluation.F1Score
         };
@@ -279,7 +279,7 @@ public class FeatureSelectionService : IFeatureSelectionService
         }
 
         Console.WriteLine($"\n🏆 BEST COMBINATION: {report.BestFeatureCombination.Name}");
-        Console.WriteLine($"   AUC: {report.BestFeatureCombination.AUC:F4}");
+        Console.WriteLine($"   Auc: {report.BestFeatureCombination.AUC:F4}");
         Console.WriteLine($"   Accuracy: {report.BestFeatureCombination.Accuracy:P2}");
     }
 

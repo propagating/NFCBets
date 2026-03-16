@@ -1,12 +1,13 @@
+using System.Diagnostics;
+using System.Text.Json;
 using NFCBets.Causal;
+using NFCBets.Classical;
 using NFCBets.Classical.Interfaces;
+using NFCBets.Evaluation.Enums;
 using NFCBets.Evaluation.Interfaces;
 using NFCBets.Evaluation.Models;
 using NFCBets.Services.Interfaces;
 using NFCBets.Utilities.Models;
-using System.Diagnostics;
-using NFCBets.Classical;
-using NFCBets.Evaluation.Enums;
 
 namespace NFCBets.Evaluation;
 
@@ -148,14 +149,14 @@ public class MlStrategyComparisonService : IMlStrategyComparisonService
                 
                 var evalReport = await strategy.EvaluateAsync(testData);
                 
-                result.Auc = evalReport.AUC;
+                result.Auc = evalReport.Auc;
                 result.Accuracy = evalReport.Accuracy;
                 result.LogLoss = evalReport.LogLoss;
                 result.F1Score = evalReport.F1Score;
                 result.Precision = evalReport.Precision;
                 result.Recall = evalReport.Recall;
                 
-                Console.WriteLine($"   AUC: {result.Auc:F4} | Accuracy: {result.Accuracy:P1} | LogLoss: {result.LogLoss:F4} | Time: {result.TrainingTime.TotalSeconds:F1}s");
+                Console.WriteLine($"   Auc: {result.Auc:F4} | Accuracy: {result.Accuracy:P1} | LogLoss: {result.LogLoss:F4} | Time: {result.TrainingTime.TotalSeconds:F1}s");
             }
             catch (Exception ex)
             {
@@ -277,7 +278,7 @@ public class MlStrategyComparisonService : IMlStrategyComparisonService
         Console.WriteLine("📊 STATISTICAL EVALUATION RESULTS");
         Console.WriteLine(new string('─', 80) + "\n");
 
-        Console.WriteLine($"{"Rank",-5} {"Strategy",-40} {"AUC",-10} {"Accuracy",-10} {"LogLoss",-10} {"Time",-8}");
+        Console.WriteLine($"{"Rank",-5} {"Strategy",-40} {"Auc",-10} {"Accuracy",-10} {"LogLoss",-10} {"Time",-8}");
         Console.WriteLine(new string('─', 85));
 
         foreach (var result in report.Results.Where(r => r.ErrorMessage == null).OrderBy(r => r.Rank))
@@ -305,7 +306,7 @@ public class MlStrategyComparisonService : IMlStrategyComparisonService
         }
 
         Console.WriteLine(new string('─', 85));
-        Console.WriteLine($"\n🏆 Best Statistical Model: {report.RecommendedStrategy} (AUC: {report.BestAuc:F4})");
+        Console.WriteLine($"\n🏆 Best Statistical Model: {report.RecommendedStrategy} (Auc: {report.BestAuc:F4})");
     }
 
     private void DisplayFinalSummary(MlStrategyComparisonReport report)
@@ -314,26 +315,26 @@ public class MlStrategyComparisonService : IMlStrategyComparisonService
         Console.WriteLine("🎯 FINAL RECOMMENDATIONS");
         Console.WriteLine(new string('═', 80) + "\n");
 
-        Console.WriteLine($"📊 Statistical Analysis:");
+        Console.WriteLine("📊 Statistical Analysis:");
         Console.WriteLine($"   Best Model: {report.RecommendedStrategy}");
-        Console.WriteLine($"   AUC: {report.BestAuc:F4} | Accuracy: {report.BestAccuracy:P2}");
+        Console.WriteLine($"   Auc: {report.BestAuc:F4} | Accuracy: {report.BestAccuracy:P2}");
 
         if (report.BacktestIncluded && report.BacktestResults.Any())
         {
-            Console.WriteLine($"\n💰 Backtest Analysis:");
+            Console.WriteLine("\n💰 Backtest Analysis:");
             Console.WriteLine($"   Best Model: {report.BestBacktestStrategy}");
             Console.WriteLine($"   ROI: {report.BestBacktestROI:P2}");
 
             // Compare statistical vs backtest winners
             if (report.RecommendedStrategy != report.BestBacktestStrategy)
             {
-                Console.WriteLine($"\n⚠️ DIVERGENCE DETECTED:");
+                Console.WriteLine("\n⚠️ DIVERGENCE DETECTED:");
                 Console.WriteLine($"   Statistical winner ({report.RecommendedStrategy}) differs from backtest winner ({report.BestBacktestStrategy})");
                 Console.WriteLine($"   Consider using {report.BestBacktestStrategy} for actual betting.");
             }
             else
             {
-                Console.WriteLine($"\n✅ CONSISTENT RESULTS:");
+                Console.WriteLine("\n✅ CONSISTENT RESULTS:");
                 Console.WriteLine($"   Both statistical and backtest analysis recommend {report.RecommendedStrategy}");
             }
 
@@ -350,9 +351,9 @@ public class MlStrategyComparisonService : IMlStrategyComparisonService
 
             if (balancedResults != null)
             {
-                Console.WriteLine($"\n🎯 BALANCED RECOMMENDATION (considering all factors):");
+                Console.WriteLine("\n🎯 BALANCED RECOMMENDATION (considering all factors):");
                 Console.WriteLine($"   {balancedResults.Result.StrategyName}");
-                Console.WriteLine($"   AUC: {balancedResults.Result.Auc:F4} | ROI: {balancedResults.Result.BacktestROI:P2} | Sharpe: {balancedResults.Result.BacktestSharpeRatio:F2}");
+                Console.WriteLine($"   Auc: {balancedResults.Result.Auc:F4} | ROI: {balancedResults.Result.BacktestROI:P2} | Sharpe: {balancedResults.Result.BacktestSharpeRatio:F2}");
             }
         }
 
@@ -365,7 +366,7 @@ public class MlStrategyComparisonService : IMlStrategyComparisonService
         {
             Directory.CreateDirectory("Reports");
             var fileName = Path.Combine("Reports", $"ml_comparison_{DateTime.UtcNow:yyyyMMdd_HHmmss}.json");
-            var json = System.Text.Json.JsonSerializer.Serialize(report, new System.Text.Json.JsonSerializerOptions 
+            var json = JsonSerializer.Serialize(report, new JsonSerializerOptions 
             { 
                 WriteIndented = true 
             });

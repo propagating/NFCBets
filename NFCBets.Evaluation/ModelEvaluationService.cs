@@ -27,7 +27,7 @@ public class ModelEvaluationService : IModelEvaluationService
         var predictions = model.Transform(testDataView);
 
         // Get binary classification metrics
-        var metrics = _mlContext.BinaryClassification.Evaluate(predictions, nameof(MlPirateFeature.Won));
+        var metrics = _mlContext.BinaryClassification.Evaluate(predictions);
 
         // Get detailed predictions for analysis
         var predictionResults = _mlContext.Data.CreateEnumerable<PiratePredictionOutput>(predictions, false).ToList();
@@ -41,7 +41,7 @@ public class ModelEvaluationService : IModelEvaluationService
         {
             // Overall metrics
             Accuracy = metrics.Accuracy,
-            AUC = metrics.AreaUnderRocCurve,
+            Auc = metrics.AreaUnderRocCurve,
             F1Score = metrics.F1Score,
             Precision = metrics.PositivePrecision,
             Recall = metrics.PositiveRecall,
@@ -71,7 +71,7 @@ public class ModelEvaluationService : IModelEvaluationService
 
         // Baseline: All features
         var baselineAUC = await TrainAndGetAUC(mlData, null);
-        Console.WriteLine($"   Baseline AUC (all features): {baselineAUC:F4}");
+        Console.WriteLine($"   Baseline Auc (all features): {baselineAUC:F4}");
 
         // Test removing each feature
         var featureNames = new[]
@@ -270,13 +270,11 @@ public class ModelEvaluationService : IModelEvaluationService
 
         var pipeline = _mlContext.Transforms.Concatenate("Features", featureColumns.ToArray())
             .Append(_mlContext.Transforms.NormalizeMinMax("Features"))
-            .Append(_mlContext.BinaryClassification.Trainers.LightGbm(
-                nameof(MlPirateFeature.Won),
-                numberOfIterations: 50));
+            .Append(_mlContext.BinaryClassification.Trainers.LightGbm(numberOfIterations: 50));
 
         var model = pipeline.Fit(split.TrainSet);
         var predictions = model.Transform(split.TestSet);
-        var metrics = _mlContext.BinaryClassification.Evaluate(predictions, nameof(MlPirateFeature.Won));
+        var metrics = _mlContext.BinaryClassification.Evaluate(predictions);
 
         return metrics.AreaUnderRocCurve;
     }
@@ -409,7 +407,7 @@ public class ModelEvaluationService : IModelEvaluationService
         Console.WriteLine("═══════════════════════════════════════════════════");
         Console.WriteLine($"\n📈 Overall Performance (n={report.TestDataSize}):");
         Console.WriteLine($"   Accuracy:  {report.Accuracy:P2}");
-        Console.WriteLine($"   AUC:       {report.AUC:F4}");
+        Console.WriteLine($"   Auc:       {report.Auc:F4}");
         Console.WriteLine($"   F1 Score:  {report.F1Score:F4}");
         Console.WriteLine($"   Precision: {report.Precision:F4}");
         Console.WriteLine($"   Recall:    {report.Recall:F4}");
@@ -433,13 +431,11 @@ public class ModelEvaluationService : IModelEvaluationService
 
         // Warnings
         Console.WriteLine("\n⚠️ Model Assessment:");
-        if (report.AUC < 0.6)
-            Console.WriteLine("   ⚠️ Low AUC - Model has weak predictive power");
+        if (report.Auc < 0.6)
+            Console.WriteLine("   ⚠️ Low Auc - Model has weak predictive power");
         if (report.Accuracy > 0.9)
             Console.WriteLine("   ⚠️ Very high accuracy - Check for data leakage");
         if (report.CalibrationMetrics.OverallCalibrationError > 0.1)
             Console.WriteLine("   ⚠️ Poor calibration - Probabilities may not be reliable");
     }
 }
-
-// Report classes

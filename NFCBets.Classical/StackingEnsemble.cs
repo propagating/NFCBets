@@ -7,16 +7,15 @@ using NFCBets.Utilities.Models;
 namespace NFCBets.Classical;
 
 /// <summary>
-/// Stacking Ensemble - Uses a meta-learner to combine base model predictions
-/// Level 0: Base models predict probabilities
-/// Level 1: Meta-learner learns optimal combination
+/// Stacking ensemble with a meta-learner that combines base model predictions
+/// Uses cross-validation to generate meta-features without data leakage
 /// </summary>
 public class StackingEnsemble : IMlStrategy
 {
-    public string StrategyName => "Stacking Ensemble (Meta-Learner)";
-    
+    public string StrategyName => "Stacking Ensemble";
+
     private readonly MLContext _mlContext;
-    private readonly List<IMlStrategy> _baseModels = new();
+    private readonly List<IMlStrategy> _baseStrategies = new();
     private ITransformer? _metaModel;
     private InteractionAnalysisReport? _interactionReport;
 
@@ -28,61 +27,116 @@ public class StackingEnsemble : IMlStrategy
     public async Task TrainAsync(List<PirateFeatureRecord> trainingData, InteractionAnalysisReport? interactionReport = null)
     {
         _interactionReport = interactionReport;
-        
+
         Console.WriteLine($"   Training {StrategyName}...");
 
-        // Initialize base models
-        _baseModels.Clear();
-        _baseModels.Add(new MultinomialLogit());
-        _baseModels.Add(new PlackettLuce());
-        _baseModels.Add(new ConditionalLogisticRegression());
-        _baseModels.Add(new BradleyTerry());
-        _baseModels.Add(new BinaryClassification());
+        // Initialize base strategies
+        _baseStrategies.Clear();
+        _baseStrategies.Add(new BinaryClassification());
+        _baseStrategies.Add(new LogisticRegression());
+        _baseStrategies.Add(new BradleyTerry());
+        _baseStrategies.Add(new PlackettLuce());
+        _baseStrategies.Add(new MultinomialLogit());
 
-        // Split data for stacking (70% for base, 30% for meta)
+        // Pre-compute grouped data for feature conversion
+        var groupedByRoundArena = trainingData
+            .GroupBy(f => (f.RoundId, f.ArenaId))
+            .ToDictionary(g => g.Key, g => g.ToList());
+
+        // Split into folds for cross-validation meta-feature generation
         var uniqueRounds = trainingData.Select(f => f.RoundId).Distinct().OrderBy(r => r).ToList();
-        var splitIndex = (int)(uniqueRounds.Count * 0.7);
-        
-        var baseRounds = uniqueRounds.Take(splitIndex).ToHashSet();
-        var metaRounds = uniqueRounds.Skip(splitIndex).ToHashSet();
-        
-        var baseTrainData = trainingData.Where(f => baseRounds.Contains(f.RoundId)).ToList();
-        var metaTrainData = trainingData.Where(f => metaRounds.Contains(f.RoundId)).ToList();
+        var numFolds = 5;
+        var foldSize = uniqueRounds.Count / numFolds;
 
-        Console.WriteLine($"      Base training: {baseTrainData.Count} records");
-        Console.WriteLine($"      Meta training: {metaTrainData.Count} records");
+        Console.WriteLine($"      Generating meta-features using {numFolds}-fold CV...");
 
-        // Train base models on base training data
-        Console.WriteLine($"      Training {_baseModels.Count} base models...");
-        foreach (var model in _baseModels)
+        var metaFeatures = new List<StackingMetaFeature>();
+
+        for (int fold = 0; fold < numFolds; fold++)
         {
-            try
+            var valRoundStart = fold * foldSize;
+            var valRoundEnd = (fold == numFolds - 1) ? uniqueRounds.Count : (fold + 1) * foldSize;
+            var valRounds = uniqueRounds.Skip(valRoundStart).Take(valRoundEnd - valRoundStart).ToHashSet();
+            var trainRounds = uniqueRounds.Except(valRounds).ToHashSet();
+
+            var foldTrainData = trainingData.Where(f => trainRounds.Contains(f.RoundId)).ToList();
+            var foldValData = trainingData.Where(f => valRounds.Contains(f.RoundId)).ToList();
+
+            Console.WriteLine($"         Fold {fold + 1}/{numFolds}: Training on {foldTrainData.Count} records...");
+
+            // Train each base strategy on this fold's training data
+            var foldPredictions = new Dictionary<int, List<PiratePrediction>>();
+
+            for (int i = 0; i < _baseStrategies.Count; i++)
             {
-                await model.TrainAsync(baseTrainData, interactionReport);
-                Console.WriteLine($"         ✅ {model.StrategyName}");
+                try
+                {
+                    // Create fresh instance for each fold
+                    var strategy = CreateFreshStrategy(i);
+                    await strategy.TrainAsync(foldTrainData, interactionReport);
+                    foldPredictions[i] = await strategy.PredictAsync(foldValData);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"            ⚠️ Strategy {i} failed: {ex.Message}");
+                    foldPredictions[i] = new List<PiratePrediction>();
+                }
             }
-            catch (Exception ex)
+
+            // Generate meta-features for validation set
+            foreach (var record in foldValData)
             {
-                Console.WriteLine($"         ❌ {model.StrategyName}: {ex.Message}");
+                var probs = new float[_baseStrategies.Count];
+                
+                for (int i = 0; i < _baseStrategies.Count; i++)
+                {
+                    var pred = foldPredictions[i]
+                        .FirstOrDefault(p => p.RoundId == record.RoundId && 
+                                            p.ArenaId == record.ArenaId && 
+                                            p.PirateId == record.PirateId);
+                    probs[i] = pred?.WinProbability ?? 0.25f;
+                }
+
+                // Calculate odds rank within the round
+                var roundPirates = groupedByRoundArena.GetValueOrDefault((record.RoundId, record.ArenaId))
+                    ?? new List<PirateFeatureRecord> { record };
+                var oddsRank = roundPirates
+                    .OrderBy(p => p.CurrentOdds)
+                    .ToList()
+                    .FindIndex(p => p.PirateId == record.PirateId) + 1;
+
+                metaFeatures.Add(new StackingMetaFeature
+                {
+                    Model0_Prob = probs.Length > 0 ? probs[0] : 0.25f,
+                    Model1_Prob = probs.Length > 1 ? probs[1] : 0.25f,
+                    Model2_Prob = probs.Length > 2 ? probs[2] : 0.25f,
+                    Model3_Prob = probs.Length > 3 ? probs[3] : 0.25f,
+                    Model4_Prob = probs.Length > 4 ? probs[4] : 0.25f,
+                    
+                    Odds = (float)Math.Log(Math.Max(2, record.CurrentOdds)),
+                    Strength = record.Strength / 100f,
+                    Food = record.FoodAdjustment / 10f,
+                    Position = record.Position / 4f,
+                    HistWinRate = (float)record.HistoricalWinRate,
+                    OddsRank = oddsRank / 4f,
+                    
+                    MaxModelProb = probs.Max(),
+                    MinModelProb = probs.Min(),
+                    ModelProbStd = (float)MathUtilities.CalculateStandardDeviation(probs.Select(p => (double)p)),
+                    
+                    Won = record.IsWinner ?? false
+                });
             }
         }
 
-        // Generate meta-features from base model predictions on meta training data
-        Console.WriteLine($"      Generating meta-features...");
-        var metaFeatures = await GenerateMetaFeatures(metaTrainData);
+        Console.WriteLine($"      Generated {metaFeatures.Count} meta-features");
 
-        if (!metaFeatures.Any())
-        {
-            Console.WriteLine($"      ⚠️ No meta-features generated, using fallback");
-            return;
-        }
+        // Train meta-learner on all meta-features
+        Console.WriteLine("      Training meta-learner...");
+        
+        var metaDataView = _mlContext.Data.LoadFromEnumerable(metaFeatures);
 
-        Console.WriteLine($"      Training meta-learner on {metaFeatures.Count} samples...");
-
-        // Train meta-learner
-        var dataView = _mlContext.Data.LoadFromEnumerable(metaFeatures);
-
-        var pipeline = _mlContext.Transforms.Concatenate("Features",
+        var metaPipeline = _mlContext.Transforms.Concatenate("Features",
                 nameof(StackingMetaFeature.Model0_Prob),
                 nameof(StackingMetaFeature.Model1_Prob),
                 nameof(StackingMetaFeature.Model2_Prob),
@@ -100,106 +154,61 @@ public class StackingEnsemble : IMlStrategy
             .Append(_mlContext.Transforms.NormalizeMinMax("Features"))
             .Append(_mlContext.BinaryClassification.Trainers.LightGbm(
                 nameof(StackingMetaFeature.Won),
-                "Features",
                 numberOfLeaves: 15,
-                minimumExampleCountPerLeaf: 10,
+                minimumExampleCountPerLeaf: 20,
                 learningRate: 0.05,
                 numberOfIterations: 100));
 
-        _metaModel = pipeline.Fit(dataView);
-        
-        Console.WriteLine($"   ✅ Stacking ensemble trained");
-    }
+        _metaModel = metaPipeline.Fit(metaDataView);
 
-    private async Task<List<StackingMetaFeature>> GenerateMetaFeatures(List<PirateFeatureRecord> data)
-    {
-        var metaFeatures = new List<StackingMetaFeature>();
-
-        // Get predictions from all base models
-        var basePredictions = new List<List<PiratePrediction>>();
-        foreach (var model in _baseModels)
+        // Retrain all base strategies on full training data for final predictions
+        Console.WriteLine("      Retraining base strategies on full data...");
+        for (int i = 0; i < _baseStrategies.Count; i++)
         {
             try
             {
-                var preds = await model.PredictAsync(data);
-                basePredictions.Add(preds);
+                await _baseStrategies[i].TrainAsync(trainingData, interactionReport);
             }
-            catch
+            catch (Exception ex)
             {
-                basePredictions.Add(new List<PiratePrediction>());
+                Console.WriteLine($"         ⚠️ Strategy {i} failed: {ex.Message}");
             }
         }
 
-        // Generate meta-features for each pirate
-        foreach (var roundGroup in data.GroupBy(f => (f.RoundId, f.ArenaId)))
+        Console.WriteLine($"   ✅ {StrategyName} trained with {_baseStrategies.Count} base models");
+    }
+
+    private IMlStrategy CreateFreshStrategy(int index)
+    {
+        return index switch
         {
-            var pirates = roundGroup.OrderBy(p => p.Position).ToList();
-            if (pirates.Count != 4) continue;
-
-            var oddsRanks = pirates
-                .Select((p, idx) => new { Index = idx, Odds = p.CurrentOdds })
-                .OrderBy(x => x.Odds)
-                .Select((x, rank) => new { x.Index, Rank = rank + 1 })
-                .OrderBy(x => x.Index)
-                .Select(x => (float)x.Rank)
-                .ToArray();
-
-            for (int i = 0; i < 4; i++)
-            {
-                var pirate = pirates[i];
-                var modelProbs = new float[_baseModels.Count];
-
-                // Get predictions from each base model
-                for (int m = 0; m < _baseModels.Count; m++)
-                {
-                    var pred = basePredictions[m]
-                        .FirstOrDefault(p => p.RoundId == pirate.RoundId && 
-                                            p.ArenaId == pirate.ArenaId && 
-                                            p.PirateId == pirate.PirateId);
-                    modelProbs[m] = pred?.WinProbability ?? 0.25f;
-                }
-
-                metaFeatures.Add(new StackingMetaFeature
-                {
-                    Model0_Prob = modelProbs[0],
-                    Model1_Prob = modelProbs[1],
-                    Model2_Prob = modelProbs[2],
-                    Model3_Prob = modelProbs[3],
-                    Model4_Prob = modelProbs.Length > 4 ? modelProbs[4] : 0.25f,
-                    Odds = (float)Math.Log(Math.Max(2, pirate.CurrentOdds)),
-                    Strength = pirate.Strength / 100f,
-                    Food = pirate.FoodAdjustment / 10f,
-                    Position = pirate.Position / 4f,
-                    HistWinRate = (float)pirate.HistoricalWinRate,
-                    OddsRank = oddsRanks[i] / 4f,
-                    MaxModelProb = modelProbs.Max(),
-                    MinModelProb = modelProbs.Min(),
-                    ModelProbStd = (float)CalculateStdDev(modelProbs),
-                    Won = pirate.IsWinner ?? false
-                });
-            }
-        }
-
-        return metaFeatures;
+            0 => new BinaryClassification(),
+            1 => new LogisticRegression(),
+            2 => new BradleyTerry(),
+            3 => new PlackettLuce(),
+            4 => new MultinomialLogit(),
+            _ => new BinaryClassification()
+        };
     }
 
     public async Task<List<PiratePrediction>> PredictAsync(List<PirateFeatureRecord> features)
     {
         if (_metaModel == null)
-        {
-            // Fallback to simple averaging if meta-model not trained
-            return await FallbackPredict(features);
-        }
+            throw new InvalidOperationException("Model must be trained first");
 
-        var predictions = new List<PiratePrediction>();
+        // Pre-compute grouped data
+        var groupedByRoundArena = features
+            .GroupBy(f => (f.RoundId, f.ArenaId))
+            .ToDictionary(g => g.Key, g => g.ToList());
 
-        // Get base model predictions
+        // Get predictions from all base strategies
         var basePredictions = new List<List<PiratePrediction>>();
-        foreach (var model in _baseModels)
+        
+        foreach (var strategy in _baseStrategies)
         {
             try
             {
-                var preds = await model.PredictAsync(features);
+                var preds = await strategy.PredictAsync(features);
                 basePredictions.Add(preds);
             }
             catch
@@ -208,114 +217,114 @@ public class StackingEnsemble : IMlStrategy
             }
         }
 
-        // Generate meta-features and predict
-        foreach (var roundGroup in features.GroupBy(f => (f.RoundId, f.ArenaId)))
+        // Build meta-features and predict
+        var metaFeatures = new List<StackingMetaFeature>();
+        var featureToRecordMap = new List<PirateFeatureRecord>();
+
+        foreach (var record in features)
         {
-            var pirates = roundGroup.OrderBy(p => p.Position).ToList();
-            if (pirates.Count != 4) continue;
-
-            var oddsRanks = pirates
-                .Select((p, idx) => new { Index = idx, Odds = p.CurrentOdds })
-                .OrderBy(x => x.Odds)
-                .Select((x, rank) => new { x.Index, Rank = rank + 1 })
-                .OrderBy(x => x.Index)
-                .Select(x => (float)x.Rank)
-                .ToArray();
-
-            var metaFeatures = new List<StackingMetaFeature>();
-
-            for (int i = 0; i < 4; i++)
+            var probs = new float[_baseStrategies.Count];
+            
+            for (int i = 0; i < basePredictions.Count; i++)
             {
-                var pirate = pirates[i];
-                var modelProbs = new float[_baseModels.Count];
-
-                for (int m = 0; m < _baseModels.Count; m++)
-                {
-                    var pred = basePredictions[m]
-                        .FirstOrDefault(p => p.RoundId == pirate.RoundId && 
-                                            p.ArenaId == pirate.ArenaId && 
-                                            p.PirateId == pirate.PirateId);
-                    modelProbs[m] = pred?.WinProbability ?? 0.25f;
-                }
-
-                metaFeatures.Add(new StackingMetaFeature
-                {
-                    Model0_Prob = modelProbs[0],
-                    Model1_Prob = modelProbs[1],
-                    Model2_Prob = modelProbs[2],
-                    Model3_Prob = modelProbs[3],
-                    Model4_Prob = modelProbs.Length > 4 ? modelProbs[4] : 0.25f,
-                    Odds = (float)Math.Log(Math.Max(2, pirate.CurrentOdds)),
-                    Strength = pirate.Strength / 100f,
-                    Food = pirate.FoodAdjustment / 10f,
-                    Position = pirate.Position / 4f,
-                    HistWinRate = (float)pirate.HistoricalWinRate,
-                    OddsRank = oddsRanks[i] / 4f,
-                    MaxModelProb = modelProbs.Max(),
-                    MinModelProb = modelProbs.Min(),
-                    ModelProbStd = (float)CalculateStdDev(modelProbs)
-                });
+                var pred = basePredictions[i]
+                    .FirstOrDefault(p => p.RoundId == record.RoundId && 
+                                        p.ArenaId == record.ArenaId && 
+                                        p.PirateId == record.PirateId);
+                probs[i] = pred?.WinProbability ?? 0.25f;
             }
 
-            // Predict using meta-model
-            var dataView = _mlContext.Data.LoadFromEnumerable(metaFeatures);
-            var metaPredictions = _metaModel.Transform(dataView);
-            var results = _mlContext.Data.CreateEnumerable<PiratePredictionOutput>(metaPredictions, false).ToList();
+            var roundPirates = groupedByRoundArena.GetValueOrDefault((record.RoundId, record.ArenaId))
+                ?? new List<PirateFeatureRecord> { record };
+            var oddsRank = roundPirates
+                .OrderBy(p => p.CurrentOdds)
+                .ToList()
+                .FindIndex(p => p.PirateId == record.PirateId) + 1;
 
-            // Normalize probabilities to sum to 1
-            var probs = results.Select(r => (double)r.Probability).ToArray();
-            var sum = probs.Sum();
-            if (sum <= 0) sum = 1;
-
-            for (int i = 0; i < 4; i++)
+            metaFeatures.Add(new StackingMetaFeature
             {
-                predictions.Add(new PiratePrediction
-                {
-                    RoundId = pirates[i].RoundId,
-                    ArenaId = pirates[i].ArenaId,
-                    PirateId = pirates[i].PirateId,
-                    WinProbability = (float)(probs[i] / sum),
-                    Payout = Math.Max(2, pirates[i].CurrentOdds)
-                });
-            }
+                Model0_Prob = probs.Length > 0 ? probs[0] : 0.25f,
+                Model1_Prob = probs.Length > 1 ? probs[1] : 0.25f,
+                Model2_Prob = probs.Length > 2 ? probs[2] : 0.25f,
+                Model3_Prob = probs.Length > 3 ? probs[3] : 0.25f,
+                Model4_Prob = probs.Length > 4 ? probs[4] : 0.25f,
+                
+                Odds = (float)Math.Log(Math.Max(2, record.CurrentOdds)),
+                Strength = record.Strength / 100f,
+                Food = record.FoodAdjustment / 10f,
+                Position = record.Position / 4f,
+                HistWinRate = (float)record.HistoricalWinRate,
+                OddsRank = oddsRank / 4f,
+                
+                MaxModelProb = probs.Max(),
+                MinModelProb = probs.Min(),
+                ModelProbStd = (float)MathUtilities.CalculateStandardDeviation(probs.Select(p => (double)p)),
+                
+                Won = false // Not used for prediction
+            });
+
+            featureToRecordMap.Add(record);
         }
 
-        return predictions;
-    }
+        var metaDataView = _mlContext.Data.LoadFromEnumerable(metaFeatures);
+        var predictions = _metaModel.Transform(metaDataView);
+        var results = _mlContext.Data.CreateEnumerable<PiratePredictionOutput>(predictions, false).ToList();
 
-    private async Task<List<PiratePrediction>> FallbackPredict(List<PirateFeatureRecord> features)
-    {
-        var predictions = new List<PiratePrediction>();
-        
-        // Simple average of base models
-        var basePredictions = new List<List<PiratePrediction>>();
-        foreach (var model in _baseModels)
+        // Build final predictions
+        var finalPredictions = new List<PiratePrediction>();
+
+        for (int i = 0; i < results.Count; i++)
         {
-            try
+            var record = featureToRecordMap[i];
+            finalPredictions.Add(new PiratePrediction
             {
-                var preds = await model.PredictAsync(features);
-                basePredictions.Add(preds);
-            }
-            catch { }
-        }
-
-        foreach (var f in features)
-        {
-            var probs = basePredictions
-                .Select(bp => bp.FirstOrDefault(p => p.RoundId == f.RoundId && p.ArenaId == f.ArenaId && p.PirateId == f.PirateId)?.WinProbability ?? 0.25f)
-                .ToList();
-
-            predictions.Add(new PiratePrediction
-            {
-                RoundId = f.RoundId,
-                ArenaId = f.ArenaId,
-                PirateId = f.PirateId,
-                WinProbability = probs.Any() ? probs.Average() : 0.25f,
-                Payout = Math.Max(2, f.CurrentOdds)
+                RoundId = record.RoundId,
+                ArenaId = record.ArenaId,
+                PirateId = record.PirateId,
+                WinProbability = Math.Clamp(results[i].Probability, 0.01f, 0.99f),
+                Payout = Math.Max(2, record.CurrentOdds)
             });
         }
 
-        return predictions;
+        // Normalize probabilities per round
+        var normalizedPredictions = new List<PiratePrediction>();
+
+        foreach (var roundGroup in finalPredictions.GroupBy(p => (p.RoundId, p.ArenaId)))
+        {
+            var roundPreds = roundGroup.ToList();
+            var total = roundPreds.Sum(p => p.WinProbability);
+
+            if (total > 0)
+            {
+                foreach (var pred in roundPreds)
+                {
+                    normalizedPredictions.Add(new PiratePrediction
+                    {
+                        RoundId = pred.RoundId,
+                        ArenaId = pred.ArenaId,
+                        PirateId = pred.PirateId,
+                        WinProbability = pred.WinProbability / total,
+                        Payout = pred.Payout
+                    });
+                }
+            }
+            else
+            {
+                foreach (var pred in roundPreds)
+                {
+                    normalizedPredictions.Add(new PiratePrediction
+                    {
+                        RoundId = pred.RoundId,
+                        ArenaId = pred.ArenaId,
+                        PirateId = pred.PirateId,
+                        WinProbability = 0.25f,
+                        Payout = pred.Payout
+                    });
+                }
+            }
+        }
+
+        return normalizedPredictions;
     }
 
     public async Task<ModelEvaluationReport> EvaluateAsync(List<PirateFeatureRecord> testData)
@@ -360,35 +369,32 @@ public class StackingEnsemble : IMlStrategy
         return new ModelEvaluationReport
         {
             Accuracy = accuracy,
-            AUC = auc,
+            Auc = auc,
             F1Score = accuracy * 0.5,
             TestDataSize = testData.Count,
             LogLoss = logLoss
         };
     }
 
-    private double CalculateStdDev(float[] values)
-    {
-        if (values.Length == 0) return 0;
-        var avg = values.Average();
-        var sumSquares = values.Sum(v => (v - avg) * (v - avg));
-        return Math.Sqrt(sumSquares / values.Length);
-    }
-
     public void SaveModel(string path)
     {
-        if (_metaModel == null) return;
-        
+        if (_metaModel == null)
+            throw new InvalidOperationException("No model to save");
+
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         _mlContext.Model.Save(_metaModel, null, path.Replace(".zip", "_stacking_meta.zip"));
 
-        for (int i = 0; i < _baseModels.Count; i++)
+        // Save base strategies
+        for (int i = 0; i < _baseStrategies.Count; i++)
         {
             try
             {
-                _baseModels[i].SaveModel(path.Replace(".zip", $"_stacking_base{i}.zip"));
+                _baseStrategies[i].SaveModel(path.Replace(".zip", $"_stacking_base{i}.zip"));
             }
-            catch { }
+            catch
+            {
+                // Some strategies may not support saving
+            }
         }
     }
 
@@ -400,13 +406,24 @@ public class StackingEnsemble : IMlStrategy
             _metaModel = _mlContext.Model.Load(metaPath, out _);
         }
 
-        for (int i = 0; i < _baseModels.Count; i++)
+        // Load base strategies
+        _baseStrategies.Clear();
+        _baseStrategies.Add(new BinaryClassification());
+        _baseStrategies.Add(new LogisticRegression());
+        _baseStrategies.Add(new BradleyTerry());
+        _baseStrategies.Add(new PlackettLuce());
+        _baseStrategies.Add(new MultinomialLogit());
+
+        for (int i = 0; i < _baseStrategies.Count; i++)
         {
             try
             {
-                _baseModels[i].LoadModel(path.Replace(".zip", $"_stacking_base{i}.zip"));
+                _baseStrategies[i].LoadModel(path.Replace(".zip", $"_stacking_base{i}.zip"));
             }
-            catch { }
+            catch
+            {
+                // Some strategies may not have saved models
+            }
         }
     }
 }

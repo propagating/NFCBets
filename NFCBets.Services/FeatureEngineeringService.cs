@@ -1,24 +1,26 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using NFCBets.EF.Models;
 using NFCBets.Services.Interfaces;
 using NFCBets.Utilities.Models;
 
 namespace NFCBets.Services;
 
-public class FeatureEngineeringService(NfcbetsContext context)
+public class FeatureEngineeringService(NfcbetsContext context, ILogger<FeatureEngineeringService> logger)
     : IFeatureEngineeringService
 {
     private Dictionary<int, List<RoundResult>>? _allHistoricalResultsCache;
     private Dictionary<int, Pirate>? _pirateCache;
+    private Dictionary<int, string>? _pirateNamesCache;
 
-    /// OPTIMIZED: CreateFeaturesForRoundAsync with caching
+    #region Feature Creation
+
+    /// <summary>
+    /// Create features for a specific round (for predictions)
+    /// </summary>
     public async Task<List<PirateFeatureRecord>> CreateFeaturesForRoundAsync(int roundId)
     {
-        // OPTIMIZATION 1: Single query for all placements
-        // EXCLUDE 1:1 odds at query level
         var features = new List<PirateFeatureRecord>();
-
-        //Console.WriteLine($"   Loading placements for round {roundId}...");
 
         // Check total placements first
         var allPlacements = await context.RoundPiratePlacements
@@ -27,20 +29,14 @@ public class FeatureEngineeringService(NfcbetsContext context)
 
         if (!allPlacements.Any())
         {
-            Console.WriteLine($"   ⚠️ WARNING: No valid placements for round {roundId}!");
+            logger.LogInformation($"   ⚠️ WARNING: No valid placements for round {roundId}!");
             return features;
         }
-
-
-        //Console.WriteLine($"   Found {allPlacements.Count} total placements");
 
         // Filter out 1:1 odds
         var placements = allPlacements
             .Where(p => (p.CurrentOdds ?? p.StartingOdds) > 1)
             .ToList();
-
-        //Console.WriteLine($"   After filtering 1:1 odds: {placements.Count} valid placements");
-        //Console.WriteLine($"   Filtered out: {allPlacements.Count - placements.Count} pirates with 1:1 odds");
 
         if (!placements.Any())
         {
@@ -56,12 +52,12 @@ public class FeatureEngineeringService(NfcbetsContext context)
             .Distinct()
             .ToList();
 
-        // OPTIMIZATION 3: Batch load pirates
+        // Batch load pirates
         _pirateCache = await context.Pirates
             .Where(p => pirateIds.Contains(p.PirateId))
             .ToDictionaryAsync(p => p.PirateId, p => p);
 
-        // OPTIMIZATION 4: Batch load ALL historical results for these pirates
+        // Batch load ALL historical results for these pirates
         _allHistoricalResultsCache = (await context.RoundResults
                 .Where(rr => pirateIds.Contains(rr.PirateId) &&
                              rr.IsComplete &&
@@ -71,7 +67,7 @@ public class FeatureEngineeringService(NfcbetsContext context)
             .GroupBy(rr => rr.PirateId)
             .ToDictionary(g => g.Key, g => g.ToList());
 
-        // OPTIMIZATION 5: Pre-calculate rivals for each arena
+        // Pre-calculate rivals for each arena
         var rivalsByArena = placements
             .Where(p => p is { ArenaId: not null, PirateId: not null })
             .GroupBy(p => p.ArenaId!.Value)
@@ -109,7 +105,9 @@ public class FeatureEngineeringService(NfcbetsContext context)
         return features;
     }
 
-    /// OPTIMIZED: CreateTrainingDataAsync
+    /// <summary>
+    /// Create training data from historical rounds
+    /// </summary>
     public async Task<List<PirateFeatureRecord>> CreateTrainingDataAsync(int maxRounds = 10000)
     {
         Console.WriteLine("📊 Creating training data (excluding 1:1 odds placeholders)...");
@@ -127,11 +125,11 @@ public class FeatureEngineeringService(NfcbetsContext context)
 
         Console.WriteLine($"Processing {completedRounds.Count} rounds...");
 
-        // Load ALL pirates once
+        // Load ALL pirates
         _pirateCache = await context.Pirates
             .ToDictionaryAsync(p => p.PirateId, p => p);
 
-        // Load ALL historical results once
+        // Load ALL historical results
         _allHistoricalResultsCache = (await context.RoundResults
                 .Where(rr => rr.IsComplete && rr.RoundId.HasValue)
                 .ToListAsync())
@@ -148,14 +146,14 @@ public class FeatureEngineeringService(NfcbetsContext context)
             // EXCLUDE 1:1 odds at query level
             var batchPlacements = await context.RoundPiratePlacements
                 .Where(rpp => batchRounds.Contains(rpp.RoundId!.Value) &&
-                              (rpp.CurrentOdds ?? rpp.StartingOdds) > 1) // ✅ Exclude 1:1 odds
+                              (rpp.CurrentOdds ?? rpp.StartingOdds) > 1)
                 .ToListAsync();
 
             var batchResults = await context.RoundResults
                 .Where(rr => batchRounds.Contains(rr.RoundId!.Value))
                 .ToListAsync();
 
-            // Process each round in batch
+            // Process each round in batches
             foreach (var roundId in batchRounds)
             {
                 var roundPlacements = batchPlacements.Where(p => p.RoundId == roundId).ToList();
@@ -204,7 +202,10 @@ public class FeatureEngineeringService(NfcbetsContext context)
         Console.WriteLine($"✅ Generated {features.Count} training features (1:1 odds excluded)");
         return features;
     }
-    
+
+    #endregion
+
+    #region Feature Building
 
     private PirateFeatureRecord? BuildFeatureRecordOptimized(
         int pirateId,
@@ -221,7 +222,7 @@ public class FeatureEngineeringService(NfcbetsContext context)
         // Use cached results (no DB query)
         var historicalResults = _allHistoricalResultsCache!
             .GetValueOrDefault(pirateId, new List<RoundResult>())
-            .Where(rr => rr.RoundId < roundId) // ✅ This MUST be here
+            .Where(rr => rr.RoundId < roundId)
             .ToList();
 
         // Calculate all stats from cached data (all in-memory, no DB queries)
@@ -240,14 +241,13 @@ public class FeatureEngineeringService(NfcbetsContext context)
             ArenaId = arenaId,
             PirateId = pirateId,
             Position = placement.PirateSeatPosition ?? 0,
-            StartingOdds = normalizedStartingOdds, // ✅ Normalized
-            CurrentOdds = normalizedCurrentOdds, // ✅ Normalized
+            OpeningOdds = normalizedStartingOdds,
+            CurrentOdds = normalizedCurrentOdds,
             FoodAdjustment = placement.PirateFoodAdjustment,
             Strength = pirate.Strength ?? 0,
             Weight = pirate.Weight ?? 0,
             HistoricalWinRate = historicalStats.WinRate,
             TotalAppearances = historicalStats.TotalAppearances,
-            AverageOdds = historicalStats.AverageOdds,
             ArenaWinRate = arenaWinRate,
             RecentWinRate = recentForm,
             WinRateVsCurrentRivals = rivalPerformance.WinRate,
@@ -257,6 +257,9 @@ public class FeatureEngineeringService(NfcbetsContext context)
         };
     }
 
+    #endregion
+
+    #region Statistical Calculations
 
     private (double WinRate, int TotalAppearances, double AverageOdds) GetHistoricalStatsOptimized(
         List<RoundResult> historicalResults)
@@ -327,19 +330,33 @@ public class FeatureEngineeringService(NfcbetsContext context)
 
         return (winRate, matchups.Count, avgRivalStrength);
     }
-    
-    
+
+    #endregion
+
+    #region Pirate Name Methods
+
     /// <summary>
     /// Get pirate names for a list of pirate IDs
     /// </summary>
     public async Task<Dictionary<int, string>> GetPirateNamesAsync(IEnumerable<int> pirateIds)
     {
         var ids = pirateIds.Distinct().ToList();
-        
+
+        // Check cache first
+        if (_pirateNamesCache != null)
+        {
+            var cached = ids
+                .Where(id => _pirateNamesCache.ContainsKey(id))
+                .ToDictionary(id => id, id => _pirateNamesCache[id]);
+
+            if (cached.Count == ids.Count)
+                return cached;
+        }
+
         return await context.Pirates
             .Where(p => ids.Contains(p.Id))
             .ToDictionaryAsync(
-                p => p.Id, 
+                p => p.Id,
                 p => p.PirateName);
     }
 
@@ -348,9 +365,24 @@ public class FeatureEngineeringService(NfcbetsContext context)
     /// </summary>
     public async Task<Dictionary<int, string>> GetAllPirateNamesAsync()
     {
-        return await context.Pirates
+        if (_pirateNamesCache != null)
+            return _pirateNamesCache;
+
+        _pirateNamesCache = await context.Pirates
             .ToDictionaryAsync(
-                p => p.Id, 
+                p => p.Id,
                 p => p.PirateName);
+
+        return _pirateNamesCache;
     }
+
+    /// <summary>
+    /// Clear the pirate names cache (call if pirates are updated)
+    /// </summary>
+    public void ClearPirateNamesCache()
+    {
+        _pirateNamesCache = null;
+    }
+
+    #endregion
 }

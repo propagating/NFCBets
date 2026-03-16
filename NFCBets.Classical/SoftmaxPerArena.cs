@@ -9,7 +9,6 @@ namespace NFCBets.Classical;
 public class SoftmaxPerArena : IMlStrategy
 {
     private readonly Dictionary<int, ITransformer> _arenaModels = new();
-
     private readonly MLContext _mlContext;
     private InteractionAnalysisReport? _interactionReport;
 
@@ -18,7 +17,7 @@ public class SoftmaxPerArena : IMlStrategy
         _mlContext = new MLContext(42);
     }
 
-    public string StrategyName => "Softmax Per Arena";
+    public string StrategyName => "Softmax Per Arena (SDCA MaxEnt)";
 
     public async Task TrainAsync(List<PirateFeatureRecord> trainingData,
         InteractionAnalysisReport interactionReport = null)
@@ -27,12 +26,18 @@ public class SoftmaxPerArena : IMlStrategy
 
         Console.WriteLine($"   Training {StrategyName}...");
 
-        if (_interactionReport != null) Console.WriteLine("      Applying interaction controls");
+        if (_interactionReport != null) 
+            Console.WriteLine("      Applying interaction controls");
 
         for (var arenaId = 1; arenaId <= 5; arenaId++)
         {
             var arenaData = trainingData.Where(f => f.ArenaId == arenaId).ToList();
-            if (!arenaData.Any()) continue;
+
+            if (!arenaData.Any())
+            {
+                Console.WriteLine($"      ⚠️ No data for Arena {arenaId}");
+                continue;
+            }
 
             Console.WriteLine($"      Training Arena {arenaId}...");
 
@@ -46,6 +51,7 @@ public class SoftmaxPerArena : IMlStrategy
 
             var dataView = _mlContext.Data.LoadFromEnumerable(arenaRounds);
 
+            // Use SDCA Maximum Entropy for softmax classification
             var pipeline = _mlContext.Transforms.Conversion.MapValueToKey("Label", "Label")
                 .Append(_mlContext.Transforms.Concatenate("Features",
                     // Pirate 0 features
@@ -124,15 +130,16 @@ public class SoftmaxPerArena : IMlStrategy
                 var prediction = model.Transform(dataView);
                 var result = _mlContext.Data.CreateEnumerable<MultiClassPrediction>(prediction, false).First();
 
-                var probabilities = Softmax(result.Score);
+                // The Score array from SDCA MaxEnt is already in probability space
+                var probs = NormalizeProbabilities(result.Score);
 
-                for (var i = 0; i < 4; i++)
+                for (var i = 0; i < 4 && i < probs.Length; i++)
                     predictions.Add(new PiratePrediction
                     {
                         RoundId = pirates[i].RoundId,
                         ArenaId = pirates[i].ArenaId,
                         PirateId = pirates[i].PirateId,
-                        WinProbability = (float)probabilities[i],
+                        WinProbability = probs[i],
                         Payout = Math.Max(2, pirates[i].CurrentOdds)
                     });
             }
@@ -184,7 +191,7 @@ public class SoftmaxPerArena : IMlStrategy
         return new ModelEvaluationReport
         {
             Accuracy = accuracy,
-            AUC = auc,
+            Auc = auc,
             F1Score = accuracy * 0.5,
             TestDataSize = testData.Count,
             LogLoss = logLoss
@@ -208,29 +215,31 @@ public class SoftmaxPerArena : IMlStrategy
         for (var arenaId = 1; arenaId <= 5; arenaId++)
         {
             var arenaPath = path.Replace(".zip", $"_softmax_arena{arenaId}.zip");
-            if (File.Exists(arenaPath)) _arenaModels[arenaId] = _mlContext.Model.Load(arenaPath, out _);
+            if (File.Exists(arenaPath))
+                _arenaModels[arenaId] = _mlContext.Model.Load(arenaPath, out _);
         }
     }
 
-    private double[] Softmax(float[] scores)
+    private float[] NormalizeProbabilities(float[] scores)
     {
         if (scores == null || scores.Length == 0)
-            return new double[4] { 0.25, 0.25, 0.25, 0.25 };
+            return new float[4] { 0.25f, 0.25f, 0.25f, 0.25f };
 
-        var doubleScores = scores.Select(s => (double)s).ToArray();
-        var max = doubleScores.Max();
-        var exps = doubleScores.Select(s => Math.Exp(s - max)).ToArray();
-        var sum = exps.Sum();
+        var sum = scores.Sum();
+        if (sum <= 0)
+            return new float[4] { 0.25f, 0.25f, 0.25f, 0.25f };
 
-        if (sum == 0)
-            return new double[4] { 0.25, 0.25, 0.25, 0.25 };
-
-        return exps.Select(e => e / sum).ToArray();
+        return scores.Select(s => Math.Max(0.01f, s / sum)).ToArray();
     }
 
     private List<ArenaRoundFeatureImproved> ConvertToArenaRoundFormat(List<PirateFeatureRecord> arenaData)
     {
         var result = new List<ArenaRoundFeatureImproved>();
+
+        // Pre-compute grouped data for feature conversion
+        var groupedByRoundArena = arenaData
+            .GroupBy(f => (f.RoundId, f.ArenaId))
+            .ToDictionary(g => g.Key, g => g.ToList());
 
         var roundGroups = arenaData.GroupBy(f => f.RoundId);
 
@@ -260,17 +269,16 @@ public class SoftmaxPerArena : IMlStrategy
                 .Select(x => (float)x.Rank)
                 .ToArray();
 
+            // Calculate interaction features using new property names
             var penalties = new float[4];
             var bonuses = new float[4];
 
             for (var i = 0; i < 4; i++)
             {
-                var mlFeature = new MlPirateFeature();
-                InteractionCalculator.ApplyInteractionFeatures(mlFeature, pirates[i], _interactionReport);
-                penalties[i] = mlFeature.Penalty_FoodPosition + mlFeature.Penalty_FoodFavorite +
-                               mlFeature.Penalty_StrengthPosition + mlFeature.Penalty_StrengthWeakRivals;
-                bonuses[i] = mlFeature.Bonus_UndervaluedStrong + mlFeature.Bonus_HotStreakBeatsRivals +
-                             mlFeature.Bonus_ArenaSpecialistModerateOdds + mlFeature.Bonus_FoodPosition3;
+                var mlFeature = FeatureConversionHelper.ConvertSingle(
+                    pirates[i], groupedByRoundArena, _interactionReport);
+                penalties[i] = InteractionCalculator.GetTotalPenalty(mlFeature);
+                bonuses[i] = InteractionCalculator.GetTotalBonus(mlFeature);
             }
 
             result.Add(new ArenaRoundFeatureImproved
@@ -279,7 +287,7 @@ public class SoftmaxPerArena : IMlStrategy
                 Pirate0_Odds = Math.Max(2, pirates[0].CurrentOdds),
                 Pirate0_Food = pirates[0].FoodAdjustment,
                 Pirate0_HistWin = (float)pirates[0].HistoricalWinRate,
-                Pirate0_StrengthDiff = pirates[0].Strength - (float)avgStrength,
+                Pirate0_StrengthDiff = pirates[0].Strength - avgStrength,
                 Pirate0_OddsRank = oddsRanks[0],
                 Pirate0_FoodRank = foodRanks[0],
                 Pirate0_FoodPositionInteraction = pirates[0].FoodAdjustment * pirates[0].Position,
@@ -290,7 +298,7 @@ public class SoftmaxPerArena : IMlStrategy
                 Pirate1_Odds = Math.Max(2, pirates[1].CurrentOdds),
                 Pirate1_Food = pirates[1].FoodAdjustment,
                 Pirate1_HistWin = (float)pirates[1].HistoricalWinRate,
-                Pirate1_StrengthDiff = pirates[1].Strength - (float)avgStrength,
+                Pirate1_StrengthDiff = pirates[1].Strength - avgStrength,
                 Pirate1_OddsRank = oddsRanks[1],
                 Pirate1_FoodRank = foodRanks[1],
                 Pirate1_FoodPositionInteraction = pirates[1].FoodAdjustment * pirates[1].Position,
@@ -301,7 +309,7 @@ public class SoftmaxPerArena : IMlStrategy
                 Pirate2_Odds = Math.Max(2, pirates[2].CurrentOdds),
                 Pirate2_Food = pirates[2].FoodAdjustment,
                 Pirate2_HistWin = (float)pirates[2].HistoricalWinRate,
-                Pirate2_StrengthDiff = pirates[2].Strength - (float)avgStrength,
+                Pirate2_StrengthDiff = pirates[2].Strength - avgStrength,
                 Pirate2_OddsRank = oddsRanks[2],
                 Pirate2_FoodRank = foodRanks[2],
                 Pirate2_FoodPositionInteraction = pirates[2].FoodAdjustment * pirates[2].Position,
@@ -312,7 +320,7 @@ public class SoftmaxPerArena : IMlStrategy
                 Pirate3_Odds = Math.Max(2, pirates[3].CurrentOdds),
                 Pirate3_Food = pirates[3].FoodAdjustment,
                 Pirate3_HistWin = (float)pirates[3].HistoricalWinRate,
-                Pirate3_StrengthDiff = pirates[3].Strength - (float)avgStrength,
+                Pirate3_StrengthDiff = pirates[3].Strength - avgStrength,
                 Pirate3_OddsRank = oddsRanks[3],
                 Pirate3_FoodRank = foodRanks[3],
                 Pirate3_FoodPositionInteraction = pirates[3].FoodAdjustment * pirates[3].Position,

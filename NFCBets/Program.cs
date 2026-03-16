@@ -149,7 +149,7 @@ internal class Program
     {
         var config = new BacktestConfiguration
         {
-            StartingBankroll = ParseDecimalArg(args, "--bankroll=", 10000m),
+            StartingBankroll = ParseDecimalArg(args, "--bankroll=", 4000m),
             RoundsToSimulate = ParseIntArg(args, "--rounds=", 1000),
             MinEdgeRequired = ParseDecimalArg(args, "--min-edge=", 0.05m),
             MaxBetPercentage = ParseDecimalArg(args, "--max-bet=", 0.10m),
@@ -429,7 +429,7 @@ internal class Program
             () => mlComparison.CompareAllStrategiesAsync(interactionReport, includeBacktest, backtestConfig));
 
         Console.WriteLine("\n🏆 ML COMPARISON SUMMARY:");
-        Console.WriteLine($"   Best Statistical: {report.RecommendedStrategy} (AUC: {report.BestAuc:F4})");
+        Console.WriteLine($"   Best Statistical: {report.RecommendedStrategy} (Auc: {report.BestAuc:F4})");
 
         if (report.BacktestIncluded)
         {
@@ -440,7 +440,7 @@ internal class Program
 
         foreach (var result in report.Results.Take(3))
         {
-            Console.WriteLine($"   #{result.Rank} {result.StrategyName}: AUC={result.Auc:F4}");
+            Console.WriteLine($"   #{result.Rank} {result.StrategyName}: Auc={result.Auc:F4}");
         }
     }
 
@@ -812,7 +812,7 @@ EXAMPLES:
             var avgEV = series.Bets.Average(b => b.ExpectedValue);
             var avgProb = series.Bets.Average(b => b.CombinedWinProbability);
 
-            Console.WriteLine($"   ─────────────────────────────────────────────────────────────────────────────");
+            Console.WriteLine("   ─────────────────────────────────────────────────────────────────────────────");
             Console.WriteLine($"   📊 {series.Bets.Count} bets | Avg Win: {avgProb:P1} | Total EV: {totalEV:+0.00;-0.00} | Avg EV: {avgEV:+0.00;-0.00}");
         }
 
@@ -926,12 +926,12 @@ EXAMPLES:
         var posEvBets = allBets.Count(b => b.ExpectedValue > 0);
         var highConfBets = allBets.Count(b => b.CombinedWinProbability > 0.20);
 
-        Console.WriteLine($"\n   ⚡ RISK:");
+        Console.WriteLine("\n   ⚡ RISK:");
         Console.WriteLine($"      +EV Bets: {posEvBets}/{allBets.Count} ({(double)posEvBets / allBets.Count:P0})");
         Console.WriteLine($"      High Conf (>20%): {highConfBets}/{allBets.Count}");
 
         // Strategy breakdown
-        Console.WriteLine($"\n   📋 BY STRATEGY:");
+        Console.WriteLine("\n   📋 BY STRATEGY:");
         foreach (var series in recommendations.BetSeries.Where(s => s.Bets.Any()))
         {
             var ev = series.Bets.Sum(b => b.ExpectedValue);
@@ -994,7 +994,7 @@ EXAMPLES:
                         .Select(g => new
                         {
                             ArenaId = g.Key,
-                            ArenaName = g.First().ArenaName,
+                            g.First().ArenaName,
                             SelectionCount = g.Count(),
                             UniquePirates = g.Select(p => p.PirateId).Distinct().Count(),
                             TopPirate = g.OrderByDescending(p => p.WinProbability).First().PirateName,

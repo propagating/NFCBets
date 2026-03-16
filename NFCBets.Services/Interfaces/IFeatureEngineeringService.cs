@@ -7,7 +7,7 @@ public interface IFeatureEngineeringService
     /// <summary>
     /// Create training data from historical rounds
     /// </summary>
-    Task<List<PirateFeatureRecord>> CreateTrainingDataAsync(int maxRounds = 4000);
+    Task<List<PirateFeatureRecord>> CreateTrainingDataAsync(int maxRounds = 10000);
 
     /// <summary>
     /// Create features for a specific round (for predictions)
